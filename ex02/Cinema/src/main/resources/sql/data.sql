@@ -1,0 +1,6 @@
+-- INSERT INTO users(username, password) VALUES
+-- ('alice@gmail.com', '1234'),
+-- ('bob@gmail.com', '1234'),
+-- ('carol@gmail.com', '1234'),
+-- ('dave@gmail.com', '1234'),
+-- ('eve@gmail.com', '1234');
