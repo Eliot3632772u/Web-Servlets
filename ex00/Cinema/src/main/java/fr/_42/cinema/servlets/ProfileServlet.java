@@ -9,6 +9,6 @@ public class ProfileServlet extends HttpServlet
 {
     public void doGet(HttpServletRequest req, HttpServletResponse res) throws IOException
     {
-        res.getWriter().println("");
+        res.getWriter().println("<h1>Profile</h1>");
     }
 }
