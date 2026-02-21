@@ -1,0 +1,32 @@
+services:
+  server:
+    container_name : server
+    stdin_open: true
+    tty: true 
+    build : .
+    image : server
+    restart : always
+    depends_on : 
+      - postgres
+    networks :
+      - Service_net
+    ports:
+      - "8080:8080"
+  postgres:
+    container_name : postgres
+    image : postgres:latest
+    environment :
+      - POSTGRES_PASSWORD=qwerty007
+      - POSTGRES_DB=database 
+      - POSTGRES_USER=postgres
+    volumes:
+    - ./Cinema/src/main/resources/sql:/docker-entrypoint-initdb.d
+    ports :
+      - 5432:5432
+    restart : always
+    networks :
+      - Service_net
+
+networks:
+  Service_net:
+    driver : bridge

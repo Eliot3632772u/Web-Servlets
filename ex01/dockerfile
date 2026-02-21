@@ -1,0 +1,16 @@
+FROM maven:latest
+
+RUN apt update && apt install tree
+
+COPY Cinema /tmp/Cinema
+
+COPY apache-tomcat-11.0.18 /tmp/apache-tomcat-11.0.18
+
+WORKDIR /tmp/Cinema
+
+RUN mvn package
+
+RUN mv target/ROOT.war ../apache-tomcat-11.0.18/webapps/
+
+# CMD ["../apache-tomcat-11.0.18/bin/catalina.sh", "run"]
+CMD ["sh", "-c", "sleep 10 && ../apache-tomcat-11.0.18/bin/catalina.sh run"]
