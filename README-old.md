@@ -2734,3 +2734,322 @@ String username = request.getParameter("username"); // works
 Part avatar = request.getPart("avatar");
 
 Servlet 3.0 automatically handles both.
+
+
+
+
+🔹 Servlet Fundamentals
+
+What a Servlet is
+
+The problem Servlets solve (static HTML & CGI limitations)
+
+Dynamic server-side logic
+
+Servlet lifecycle:
+
+Loading
+
+Instantiation
+
+init()
+
+service()
+
+doGet() / doPost()
+
+destroy()
+
+Single servlet instance model
+
+Multi-threaded request handling
+
+Thread safety in servlets
+
+🔹 Servlet Container
+
+What a Servlet Container is
+
+Responsibilities of the container:
+
+HTTP parsing
+
+Socket handling
+
+Thread management
+
+Lifecycle management
+
+Session management
+
+Application isolation
+
+URL-to-servlet mapping
+
+Mapping types:
+
+Exact match
+
+Path match (/api/*)
+
+Extension match (*.jsp)
+
+Web application structure
+
+Context path
+
+Servlet path
+
+Internal request/response object creation
+
+Containers mentioned:
+
+Apache Tomcat
+
+Eclipse Jetty
+
+WildFly
+
+🔹 Core Servlet Classes
+
+HttpServlet
+
+HttpServletRequest
+
+HttpServletResponse
+
+GenericServlet
+
+ServletConfig
+
+ServletContext
+
+🔹 HttpServletRequest Topics
+
+Getting HTTP method
+
+Getting URL information
+
+Getting query parameters
+
+Reading form data
+
+Reading headers
+
+Getting session
+
+Reading request body (InputStream)
+
+🔹 HttpServletResponse Topics
+
+Setting status codes
+
+Setting headers
+
+Setting content type
+
+Writing response body
+
+Redirecting
+
+🔹 ServletContext (Application Scope)
+
+One per web application
+
+Shared across all servlets
+
+Storing global attributes
+
+Reading context parameters
+
+Accessing files (getRealPath)
+
+Logging
+
+Thread safety considerations
+
+Difference between:
+
+Servlet init parameters
+
+Context parameters
+
+🔹 Servlet Annotations
+
+@WebServlet
+
+@WebInitParam
+
+loadOnStartup
+
+urlPatterns vs value
+
+UnavailableException
+
+🔹 Listeners (Lifecycle Events)
+
+What lifecycle events are
+
+Observer pattern in servlets
+
+Scopes:
+
+Application scope
+
+Session scope
+
+Request scope
+
+Listener Types
+
+ServletContextListener
+
+ServletContextAttributeListener
+
+HttpSessionListener
+
+HttpSessionAttributeListener
+
+ServletRequestListener
+
+HttpSessionBindingListener
+
+🔹 Filters
+
+What a Servlet Filter is
+
+Why filters are needed
+
+Filter interface
+
+init()
+
+doFilter()
+
+destroy()
+
+FilterChain
+
+Blocking requests
+
+Authentication filter
+
+Logging filter
+
+Response modification
+
+Security headers
+
+Filter mapping patterns
+
+Filter lifecycle
+
+Filter ordering
+
+Request/Response Wrappers:
+
+HttpServletRequestWrapper
+
+HttpServletResponseWrapper
+
+🔹 Dispatcher Types
+
+DispatcherType.REQUEST
+
+DispatcherType.FORWARD
+
+DispatcherType.INCLUDE
+
+DispatcherType.ERROR
+
+DispatcherType.ASYNC
+
+How dispatcher types affect filter execution
+
+🔹 RequestDispatcher
+
+forward()
+
+include()
+
+Differences between forward and redirect
+
+MVC pattern (Controller → View)
+
+Rules about response commitment
+
+🔹 Session Management
+
+HTTP is stateless
+
+HttpSession
+
+Session creation
+
+getSession() vs getSession(false)
+
+Session attributes
+
+Session timeout
+
+invalidate() (logout)
+
+Session ID (JSESSIONID)
+
+Session lifecycle events
+
+🔹 Servlet Finalization & Graceful Shutdown
+
+What happens during servlet shutdown
+
+destroy() method
+
+Cleaning resources
+
+Handling long-running requests
+
+Tracking active requests
+
+Synchronized counters
+
+Shutdown flags
+
+Graceful resource cleanup
+
+Thread coordination during shutdown
+
+🔹 File Upload (Servlet 3.0+)
+
+Problem before Servlet 3.0
+
+multipart/form-data
+
+Built-in multipart support
+
+@MultipartConfig
+
+Multipart attributes:
+
+location
+
+fileSizeThreshold
+
+maxFileSize
+
+maxRequestSize
+
+Part interface
+
+request.getPart()
+
+request.getParts()
+
+Saving uploaded files
+
+Handling multiple files
+
+Handling text + file in same request
+
+Memory vs disk temporary storage
+
+IllegalStateException when limits exceeded
