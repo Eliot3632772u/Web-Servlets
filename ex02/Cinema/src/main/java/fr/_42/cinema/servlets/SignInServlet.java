@@ -9,6 +9,7 @@ import fr._42.cinema.models.*;
 import fr._42.cinema.services.*;
 import fr._42.cinema.repositories.*;
 import java.time.LocalDateTime;
+import java.util.*;
 
 @WebServlet("/signIn")
 public class SignInServlet extends HttpServlet
@@ -46,8 +47,9 @@ public class SignInServlet extends HttpServlet
                 return ;
             }
 
-            HistoryService historyService = (HistoryService) getServletContext().getAttribute("historyService");
-            if (historyService == null) 
+            HistoryRepositoryImpl historyService = (HistoryRepositoryImpl) getServletContext().getAttribute("historyService");
+            ImagesRepositoryImpl imagesService = (ImagesRepositoryImpl) getServletContext().getAttribute("imagesService");
+            if (historyService == null || imagesService  == null) 
             {
                 res.sendError(HttpServletResponse.SC_SERVICE_UNAVAILABLE, "Service not initialized.");
                 return;
@@ -57,8 +59,13 @@ public class SignInServlet extends HttpServlet
 
             historyService.save(history);
 
+            List<History> historyList = historyService.findAllByUserId(user.getId());
+            List<Image> imageList = imagesService.findAllByUserId(user.getId());
+
             HttpSession session = req.getSession();
             session.setAttribute("user", user);
+            session.setAttribute("authentications", historyList);
+            session.setAttribute("images", imageList);
             res.sendRedirect("/profile");
 
         } catch (DataAccessException e) {

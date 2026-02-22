@@ -44,6 +44,15 @@ public class HistoryRepositoryImpl implements CrudRepository<History>
         return res;
     }
 
+    public List<History> findAllByUserId(Long userId)
+    {
+        String sql = "SELECT * FROM history WHERE user_id = ?";
+
+        List<History> res = jdbcTemplate.query(sql, mapper, userId);
+
+        return res;
+    }
+
     public void save(History entity) 
     {
         String sql = "INSERT INTO history (user_id, ip_address, login_at) " +

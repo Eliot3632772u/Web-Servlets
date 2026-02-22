@@ -43,6 +43,15 @@ public class ImagesRepositoryImpl implements CrudRepository<Image>
         return res;
     }
 
+    public List<Image> findAllByUserId(Long userId)
+    {
+        String sql = "SELECT * FROM images WHERE user_id = ?";
+
+        List<Image> res = jdbcTemplate.query(sql, mapper, userId);
+
+        return res;
+    }
+
     public void save(Image entity) 
     {
         String sql = "INSERT INTO images (file_name, file_path, user_id, file_size) " +

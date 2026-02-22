@@ -17,7 +17,7 @@ import java.io.File;
 import org.springframework.dao.*;
 
 @WebServlet("/images")
-@MultipartConfig(location = "/tmp/uploads", maxFileSize = 1024 * 1024 * 5)
+@MultipartConfig(maxFileSize = 1024 * 1024 * 5)
 public class ImagesServlet extends HttpServlet
 {
     public void doPost(HttpServletRequest req, HttpServletResponse res) throws IOException, ServletException
@@ -35,7 +35,7 @@ public class ImagesServlet extends HttpServlet
             if (image != null) 
             {
                 String randomFileName = UUID.randomUUID().toString() + "." + extension;
-                ImageIO.write(image, extension, new File(storagePath + "/" + randomFileName));
+                part.write(storagePath + "/" + randomFileName);
                 ImagesRepositoryImpl imagesRepo = (ImagesRepositoryImpl) getServletContext().getAttribute("imagesService");
                 if (imagesRepo == null) 
                 {
@@ -52,8 +52,11 @@ public class ImagesServlet extends HttpServlet
                         res.sendError(HttpServletResponse.SC_FORBIDDEN, "Log In First!");
                         return;
                     }
-                    imagesRepo.save(new Image(0L, fileName, storagePath + "/" + randomFileName, user.getId(), "" + part.getSize()));
+
+
+                    imagesRepo.save(new Image(0L, fileName, randomFileName, user.getId(), formatFileSize(part.getSize())));
                     res.sendRedirect("/profile");
+                    return;
 
                 } catch (DataAccessException e) {
                     e.printStackTrace();
@@ -67,5 +70,25 @@ public class ImagesServlet extends HttpServlet
         }
 
         res.sendError(HttpServletResponse.SC_BAD_REQUEST, "No Avatar uploaded.");
+    }
+
+    private String formatFileSize(long bytes) 
+    {
+        if (bytes < 1024) {
+            return bytes + " B";
+        }
+
+        double kb = bytes / 1024.0;
+        if (kb < 1024) {
+            return String.format("%.2f KB", kb);
+        }
+
+        double mb = kb / 1024.0;
+        if (mb < 1024) {
+            return String.format("%.2f MB", mb);
+        }
+
+        double gb = mb / 1024.0;
+        return String.format("%.2f GB", gb);
     }
 }

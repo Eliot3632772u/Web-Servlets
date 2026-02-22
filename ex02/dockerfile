@@ -2,6 +2,8 @@ FROM maven:latest
 
 RUN apt update && apt install tree
 
+RUN mkdir -p /tmp/uploads
+
 COPY Cinema /tmp/Cinema
 
 COPY apache-tomcat-11.0.18 /tmp/apache-tomcat-11.0.18

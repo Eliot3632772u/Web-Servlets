@@ -1,5 +1,7 @@
 package fr._42.cinema.models;
 
+import java.time.*;
+
 public class History
 {
     private Long id;

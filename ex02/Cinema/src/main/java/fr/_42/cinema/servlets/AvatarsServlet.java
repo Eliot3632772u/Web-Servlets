@@ -2,7 +2,7 @@ package fr._42.cinema.servlets;
 
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.*;
-import java.io.IOException;
+import java.io.*;
 import jakarta.servlet.ServletException;
 
 @WebServlet("/avatars/*")
@@ -17,8 +17,7 @@ public class AvatarsServlet extends HttpServlet
             return;
         }
 
-        String fileName = pathInfo.substring(1); 
-
+        String fileName = pathInfo; 
         if (fileName.contains("..")) {
             res.sendError(HttpServletResponse.SC_FORBIDDEN);
             return;
@@ -38,6 +37,24 @@ public class AvatarsServlet extends HttpServlet
             return;
         }
 
-        
+        String mimeType = getServletContext().getMimeType(file.getName());
+
+        if (mimeType == null) {
+            mimeType = "application/octet-stream";
+        }
+
+        res.setContentType(mimeType);
+        res.setContentLengthLong(file.length());
+
+        try (InputStream in = new FileInputStream(file);
+             OutputStream out = res.getOutputStream()) {
+
+            byte[] buffer = new byte[4096];
+            int bytesRead;
+
+            while ((bytesRead = in.read(buffer)) != -1) {
+                out.write(buffer, 0, bytesRead);
+            }
+        }
     }
 }
