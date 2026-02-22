@@ -1,325 +1,755 @@
-What Is Apache Tomcat?
+# Apache Tomcat — Complete Guide
 
-Apache Tomcat is an open-source Java web server and servlet container developed by the Apache Software Foundation.
+A comprehensive guide covering what Tomcat is, how it works internally, and how to use it to deploy Java Servlet applications.
 
-It is designed to:
+---
 
-Run Java Servlets
+## Table of Contents
 
-Run JSP (JavaServer Pages)
+1. [What Is Apache Tomcat?](#1-what-is-apache-tomcat)
+2. [How Tomcat Works Internally](#2-how-tomcat-works-internally)
+3. [Folder Structure](#3-folder-structure)
+4. [Configuration](#4-configuration)
+5. [Deploying Applications](#5-deploying-applications)
+6. [Tomcat and Java Servlets](#6-tomcat-and-java-servlets)
+7. [Thread Management](#7-thread-management)
+8. [Session Management](#8-session-management)
+9. [Logging](#9-logging)
+10. [Security](#10-security)
+11. [HTTPS Configuration](#11-https-configuration)
+12. [Running Tomcat with Docker](#12-running-tomcat-with-docker)
+13. [Common Issues](#13-common-issues)
+14. [Resources](#14-resources)
 
-Implement core parts of the Jakarta EE (formerly Java EE) web specifications
+---
 
-In simple terms:
+## 1. What Is Apache Tomcat?
 
-Tomcat is the software that receives HTTP requests (like from a browser), runs your Java servlet code, and sends back an HTTP response.
+Apache Tomcat is an open-source **Servlet Container** — a program that runs Java web applications. It implements a subset of the Jakarta EE (formerly Java EE) specifications:
 
-1️⃣ What Problem Does Tomcat Solve?
+| Specification | What It Does |
+|---|---|
+| Jakarta Servlet | Handles HTTP requests with Java classes |
+| Jakarta JSP | Renders dynamic HTML via Java Server Pages |
+| Jakarta EL | Expression Language for JSP templates |
+| WebSocket | Persistent two-way connections |
 
-Java servlets are just Java classes. By themselves, they cannot:
+### Tomcat vs Full Application Servers
 
-Listen for HTTP requests
+Tomcat is intentionally lightweight. It is **not** a full Jakarta EE server:
 
-Open ports
+| Feature | Tomcat | WildFly / GlassFish |
+|---|---|---|
+| Servlets & JSP | ✅ | ✅ |
+| EJB | ❌ | ✅ |
+| JPA (built-in) | ❌ | ✅ |
+| JMS | ❌ | ✅ |
+| Weight | Light | Heavy |
+| Startup time | Fast | Slow |
 
-Parse HTTP headers
+**Tomcat is the right choice for:**
+- Servlet / JSP applications
+- REST APIs
+- Spring / Spring Boot applications
+- MVC web apps
+- Microservices
 
-Manage sessions
+---
 
-Handle concurrency
+## 2. How Tomcat Works Internally
 
-Manage servlet lifecycle
+When Tomcat starts, it goes through these stages:
+```
+Tomcat starts
+     ↓
+Reads server.xml         ← ports, connectors, thread config
+     ↓
+Reads conf/web.xml       ← global default servlet config
+     ↓
+Scans webapps/           ← finds .war files and directories
+     ↓
+Deploys each application ← creates ServletContext per app
+     ↓
+Scans @WebServlet        ← builds URL-to-servlet mapping table
+     ↓
+Opens port 8080          ← starts listening for connections
+     ↓
+Waits for HTTP requests
+```
 
-Tomcat solves this by acting as:
+### When a Request Arrives
+```
+Browser sends HTTP request
+     ↓
+Tomcat accepts TCP connection (Connector)
+     ↓
+Thread pulled from thread pool
+     ↓
+HTTP parsed → HttpServletRequest object created
+     ↓
+URL matched against mapping table
+     ↓
+Filters run (in order)
+     ↓
+Servlet.service() called → doGet() / doPost()
+     ↓
+HttpServletResponse written
+     ↓
+Thread returned to pool
+```
 
-Role	What It Does
-Web Server	Listens on port 8080 (or 80)
-Servlet Container	Manages servlet lifecycle
-JSP Engine	Converts JSP into servlets
-Thread Manager	Handles multiple users at once
-Session Manager	Tracks user sessions
-Request Dispatcher	Routes requests to correct servlet
+### Tomcat Internal Components
+```
+Tomcat
+ └── Server
+      └── Service
+           ├── Connector (HTTP, port 8080)
+           └── Engine (Catalina)
+                └── Host (localhost)
+                     ├── Context (/app1)  ← one per web app
+                     └── Context (/app2)
+```
 
-Without Tomcat (or another container), servlets cannot run.
+| Component | Role |
+|---|---|
+| **Connector** | Accepts TCP connections, parses HTTP |
+| **Engine** | Routes requests to the correct Host |
+| **Host** | Manages web applications on a virtual host |
+| **Context** | Represents one deployed web application |
 
-3️⃣ How Tomcat Works Internally
+---
 
-Tomcat consists of several main components:
+## 3. Folder Structure
+```
+apache-tomcat/
+├── bin/         ← startup and shutdown scripts
+├── conf/        ← server-wide configuration files
+├── lib/         ← shared JAR libraries for all apps
+├── logs/        ← server and application log files
+├── temp/        ← temporary runtime files
+├── webapps/     ← deployed web applications live here
+└── work/        ← compiled JSP files
+```
 
-🔹 Connector
+### `bin/` — Starting and Stopping
+```bash
+# Linux / macOS
+./bin/startup.sh          # start Tomcat
+./bin/shutdown.sh         # stop Tomcat
+./bin/catalina.sh run     # start in foreground (useful in Docker)
 
-Listens on a port (default 8080)
+# Windows
+bin\startup.bat
+bin\shutdown.bat
+```
 
-Accepts HTTP requests
+You can set custom environment variables in an optional file:
+```bash
+# bin/setenv.sh (create this file if it doesn't exist)
+export JAVA_OPTS="-Xms512m -Xmx1024m"
+export CATALINA_OPTS="-Denv=production"
+```
 
-Converts raw socket data into request objects
+### `conf/` — Configuration Files
 
-🔹 Engine
+The most important directory. Contains:
 
-Processes requests
+| File | Purpose |
+|---|---|
+| `server.xml` | Ports, connectors, threads, engine, hosts |
+| `web.xml` | Global default servlet/filter config for all apps |
+| `context.xml` | Default resource config applied to all apps |
+| `tomcat-users.xml` | Admin users and roles |
+| `logging.properties` | Log levels and log file config |
 
-Routes to correct web application
+### `webapps/` — Your Applications
 
-🔹 Host
+This is where deployed applications live:
+```
+webapps/
+├── ROOT/           ← served at http://localhost:8080/
+├── manager/        ← web-based deployment manager UI
+├── host-manager/   ← virtual host manager UI
+├── docs/           ← Tomcat documentation
+└── myapp/          ← your application at /myapp
+```
 
-Represents a virtual host (like localhost)
+Drop a `.war` file here and Tomcat auto-deploys it.
 
-🔹 Context
+### `work/` — Compiled JSPs
 
-Represents a web application
+Tomcat compiles `.jsp` files into Java servlet classes and stores them here:
+```
+work/Catalina/localhost/myapp/
+    └── org/apache/jsp/
+        └── index_jsp.java    ← generated from index.jsp
+        └── index_jsp.class   ← compiled bytecode
+```
 
-🔹 Servlet Container (Catalina)
+If JSP changes are not reflecting, delete this folder and restart.
 
-Manages servlet lifecycle:
+### `logs/` — Log Files
 
-init()
+| File | Contents |
+|---|---|
+| `catalina.out` | Main server log, stdout + stderr |
+| `localhost.YYYY-MM-DD.log` | Per-app log messages |
+| `access_log.YYYY-MM-DD.txt` | HTTP access log (all requests) |
+| `catalina.YYYY-MM-DD.log` | Tomcat internal messages |
 
-service()
+---
 
-destroy()
+## 4. Configuration
 
+### `server.xml` — The Core Configuration File
+```xml
+<Server port="8005" shutdown="SHUTDOWN">
 
+  <Service name="Catalina">
 
+    <!-- HTTP Connector — listens on port 8080 -->
+    <Connector port="8080"
+               protocol="HTTP/1.1"
+               connectionTimeout="20000"
+               redirectPort="8443"
+               maxThreads="200"
+               minSpareThreads="10" />
 
-2️⃣ What is a WAR Package?
+    <Engine name="Catalina" defaultHost="localhost">
 
-WAR = Web Application Archive
+      <Host name="localhost" appBase="webapps"
+            unpackWARs="true" autoDeploy="true">
+      </Host>
 
-It is a .war file that contains:
+    </Engine>
+  </Service>
+</Server>
+```
 
-Compiled .class files
+Key attributes:
 
-web.xml
+| Attribute | Meaning |
+|---|---|
+| `port="8080"` | HTTP port |
+| `connectionTimeout` | How long to wait for a request (ms) |
+| `maxThreads` | Max simultaneous requests |
+| `minSpareThreads` | Always-ready idle threads |
+| `autoDeploy="true"` | Auto-deploy new WARs dropped in webapps/ |
+| `unpackWARs="true"` | Extract WAR to directory on deploy |
 
-Libraries (JARs)
+### `context.xml` — Application-Level Config
 
-Static resources (HTML, CSS, JS)
+Applied to every application by default:
+```xml
+<Context>
+    <!-- Session persistence across restarts -->
+    <Manager pathname="" />
 
-Think of WAR as:
+    <!-- Shared DataSource example -->
+    <Resource name="jdbc/mydb"
+              auth="Container"
+              type="javax.sql.DataSource"
+              username="postgres"
+              password="secret"
+              driverClassName="org.postgresql.Driver"
+              url="jdbc:postgresql://localhost:5432/mydb" />
+</Context>
+```
 
-.zip file for web applications
+### `tomcat-users.xml` — Admin Access
 
-Example:
+Required to use the Manager web UI:
+```xml
+<tomcat-users>
+    <role rolename="manager-gui"/>
+    <role rolename="manager-script"/>
+    <user username="admin"
+          password="securepassword"
+          roles="manager-gui,manager-script"/>
+</tomcat-users>
+```
 
+Access the Manager UI at:
+```
+http://localhost:8080/manager/html
+```
+
+---
+
+## 5. Deploying Applications
+
+### Option 1: Drop WAR File (Most Common)
+```bash
+mvn clean package          # builds target/myapp.war
+cp target/myapp.war apache-tomcat/webapps/
+```
+
+Tomcat detects the new file, extracts it, and deploys automatically. Your app becomes available at:
+```
+http://localhost:8080/myapp
+```
+
+### Option 2: Deploy ROOT Application
+
+To serve your app at `http://localhost:8080/` (no context path):
+```bash
+# Replace the default ROOT directory
+cp target/myapp.war apache-tomcat/webapps/ROOT.war
+```
+
+Or rename during Maven build in `pom.xml`:
+```xml
+<build>
+    <finalName>ROOT</finalName>
+</build>
+```
+
+### Option 3: Custom Context Path
+
+Create a context descriptor file:
+```xml
+<!-- conf/Catalina/localhost/cinema.xml -->
+<Context docBase="/opt/myapp" path="/cinema" reloadable="true" />
+```
+
+Your app is now at:
+```
+http://localhost:8080/cinema
+```
+
+`reloadable="true"` makes Tomcat watch for class changes and reload automatically (useful in development, disable in production).
+
+### Option 4: Manager Web UI
+
+With `tomcat-users.xml` configured, visit:
+```
+http://localhost:8080/manager/html
+```
+
+Upload and deploy WAR files directly from the browser.
+
+### WAR File Structure
+
+A WAR (Web Application Archive) is just a ZIP with a specific layout:
+```
 myapp.war
+├── WEB-INF/
+│   ├── web.xml          ← deployment descriptor (optional with annotations)
+│   ├── classes/         ← compiled .class files
+│   │   └── com/example/
+│   │       └── MyServlet.class
+│   └── lib/             ← dependency JARs
+│       └── spring-core.jar
+├── index.html
+├── css/
+└── js/
+```
 
-Tomcat deploys .war files automatically when placed inside:
+---
 
-tomcat/webapps/
-3️⃣ Why This File Structure Exists
+## 6. Tomcat and Java Servlets
 
-You showed:
+### How Tomcat Finds Your Servlets
 
-myapp/
-│
-└── WEB-INF/
-    ├── web.xml
-    └── classes/
-         └── HelloServlet.class
+**Via annotation (modern approach):**
+```java
+@WebServlet("/login")
+public class LoginServlet extends HttpServlet {
 
-Let’s understand this.
-
-🔹 What is WEB-INF?
-
-WEB-INF is a protected folder.
-
-✔ Files inside cannot be accessed directly via browser
-✔ Only the server (Tomcat) can access them
-
-If someone tries:
-
-http://localhost:8080/myapp/WEB-INF/web.xml
-
-They get 404.
-
-Security reason:
-
-You don’t want users downloading .class files
-
-You don’t want users reading configuration
-
-🔹 Why classes/ exists?
-
-Tomcat must know where compiled classes are located.
-
-Standard structure inside a WAR:
-
-WEB-INF/
-   classes/        ← compiled .class files
-   lib/            ← jar dependencies
-   web.xml         ← configuration
-
-Tomcat loads classes from:
-
-WEB-INF/classes
-WEB-INF/lib
-
-That’s why the structure exists — it follows the Java Servlet specification.
-
-4️⃣ Now Let’s Do It Properly With Maven
-
-Modern Maven project structure is different from the old manual one.
-
-🏗 Step 1: Create a Maven Web Project
-
-Create project:
-
-mvn archetype:generate
-
-Or manually create structure:
-
-myapp/
-├── pom.xml
-└── src/
-    └── main/
-        ├── java/
-        ├── resources/
-        └── webapp/
-            └── WEB-INF/
-
-This is the standard Maven web structure.
-
-🧾 Step 2: pom.xml
-
-Set packaging to WAR:
-
-<project>
-    <modelVersion>4.0.0</modelVersion>
-
-    <groupId>com.example</groupId>
-    <artifactId>myapp</artifactId>
-    <version>1.0-SNAPSHOT</version>
-
-    <packaging>war</packaging>
-
-    <dependencies>
-        <dependency>
-            <groupId>jakarta.servlet</groupId>
-            <artifactId>jakarta.servlet-api</artifactId>
-            <version>5.0.0</version>
-            <scope>provided</scope>
-        </dependency>
-    </dependencies>
-</project>
-
-⚠ Important:
-scope=provided means:
-
-Tomcat provides Servlet API
-
-It won’t be packaged inside WAR
-
-🧑‍💻 Step 3: Create a Servlet
-
-File:
-
-src/main/java/com/example/HelloServlet.java
-package com.example;
-
-import jakarta.servlet.*;
-import jakarta.servlet.http.*;
-import java.io.IOException;
-
-public class HelloServlet extends HttpServlet {
-
-    @Override
-    protected void doGet(HttpServletRequest request,
-                         HttpServletResponse response)
-            throws ServletException, IOException {
-
-        response.setContentType("text/html");
-        response.getWriter().println("<h1>Hello from Servlet!</h1>");
+    protected void doGet(HttpServletRequest req, HttpServletResponse res)
+            throws IOException {
+        res.getWriter().println("Login page");
     }
 }
-📝 Step 4: web.xml
+```
 
-Location:
+Tomcat scans all classes at startup, finds `@WebServlet`, and registers the mapping.
 
-src/main/webapp/WEB-INF/web.xml
-<web-app xmlns="https://jakarta.ee/xml/ns/jakartaee"
-         version="5.0">
+**Via `web.xml` (traditional approach):**
+```xml
+<servlet>
+    <servlet-name>LoginServlet</servlet-name>
+    <servlet-class>com.example.LoginServlet</servlet-class>
+</servlet>
 
-    <servlet>
-        <servlet-name>HelloServlet</servlet-name>
-        <servlet-class>com.example.HelloServlet</servlet-class>
-    </servlet>
+<servlet-mapping>
+    <servlet-name>LoginServlet</servlet-name>
+    <url-pattern>/login</url-pattern>
+</servlet-mapping>
+```
 
-    <servlet-mapping>
-        <servlet-name>HelloServlet</servlet-name>
-        <url-pattern>/hello</url-pattern>
-    </servlet-mapping>
+### What Tomcat Does With Your Servlet
+```java
+// Conceptually, what Tomcat does at startup:
+LoginServlet instance = new LoginServlet();    // ONE instance created
+instance.init(servletConfig);                 // init() called once
 
-</web-app>
+// Then for each request:
+Thread t = new Thread(() -> {
+    HttpServletRequest req  = buildRequest(rawHttp);
+    HttpServletResponse res = buildResponse(socket);
+    instance.service(req, res);               // routes to doGet/doPost
+});
+t.start();
+```
 
-This tells Tomcat:
+### Accessing ServletContext from Your Servlet
 
-Which class is a servlet
+Tomcat injects the `ServletContext` into every servlet during `init()`. All servlets in the same app share the same instance:
+```java
+@WebServlet("/dashboard")
+public class DashboardServlet extends HttpServlet {
 
-Which URL triggers it
+    protected void doGet(HttpServletRequest req, HttpServletResponse res)
+            throws IOException {
 
-🏗 Step 5: Build the WAR
+        // Tomcat provides this — shared across all servlets in this app
+        ServletContext ctx = getServletContext();
 
-Run:
+        String appName = (String) ctx.getAttribute("appName");
+        res.getWriter().println("App: " + appName);
+    }
+}
+```
 
+### Using a `ServletContextListener` for Initialization
+
+The cleanest way to initialize shared resources (like Spring context, DB pools) before any servlet handles a request:
+```java
+@WebListener
+public class AppStartupListener implements ServletContextListener {
+
+    public void contextInitialized(ServletContextEvent sce) {
+        // Runs once when Tomcat deploys the app
+        DataSource pool = buildConnectionPool();
+        sce.getServletContext().setAttribute("dataSource", pool);
+    }
+
+    public void contextDestroyed(ServletContextEvent sce) {
+        // Runs once when Tomcat undeploys the app
+        DataSource pool = (DataSource) sce.getServletContext()
+                                          .getAttribute("dataSource");
+        pool.close();
+    }
+}
+```
+
+---
+
+## 7. Thread Management
+
+Tomcat uses a thread pool to handle concurrent requests efficiently. Instead of creating a new thread per request (expensive), it keeps a pool of reusable threads.
+```xml
+<!-- server.xml -->
+<Connector port="8080"
+           maxThreads="200"       ← max simultaneous requests
+           minSpareThreads="10"   ← always-warm idle threads
+           acceptCount="100"      ← queue size when all threads are busy
+           connectionTimeout="20000" />
+```
+
+| Setting | Effect |
+|---|---|
+| `maxThreads` | Hard limit on concurrent requests. Excess requests queue up |
+| `minSpareThreads` | Pre-warmed threads ready to accept work immediately |
+| `acceptCount` | How many requests queue when all `maxThreads` are busy. Beyond this → connection refused |
+
+### Thread Safety Reminder
+
+Because Tomcat calls the same servlet instance from multiple threads simultaneously, **never store request-specific data in servlet instance fields**:
+```java
+// ❌ DANGEROUS — instance field shared by all threads
+public class BadServlet extends HttpServlet {
+    private String currentUser; // race condition!
+}
+
+// ✅ SAFE — local variable is on each thread's stack
+public class GoodServlet extends HttpServlet {
+    protected void doGet(...) {
+        String currentUser = req.getParameter("user"); // thread-local
+    }
+}
+```
+
+---
+
+## 8. Session Management
+
+Tomcat handles session management automatically. When you call `request.getSession()`, Tomcat:
+
+1. Generates a unique session ID (`JSESSIONID`)
+2. Stores the session object in memory
+3. Sends the ID to the browser as a cookie
+```
+HTTP Response:
+Set-Cookie: JSESSIONID=3F2A1B9C4D...
+
+Subsequent requests:
+Cookie: JSESSIONID=3F2A1B9C4D...  ← browser sends it back automatically
+```
+
+### Session Timeout Configuration
+
+In your app's `WEB-INF/web.xml`:
+```xml
+<session-config>
+    <session-timeout>30</session-timeout> <!-- minutes -->
+</session-config>
+```
+
+Or globally for all apps in `conf/web.xml` (same syntax).
+
+Or programmatically:
+```java
+request.getSession().setMaxInactiveInterval(1800); // 1800 seconds = 30 min
+```
+
+### Session Persistence Across Restarts
+
+By default Tomcat serializes sessions to disk on shutdown and reloads them on startup (using `PersistentManager`). Disable this in `conf/context.xml` for clean restarts:
+```xml
+<Context>
+    <Manager pathname="" /> <!-- empty pathname = no persistence -->
+</Context>
+```
+
+---
+
+## 9. Logging
+
+Tomcat uses `java.util.logging` by default, configured in `conf/logging.properties`.
+
+### Log Levels
+```properties
+# conf/logging.properties
+org.apache.catalina.core.ContainerBase.[Catalina].[localhost].level = INFO
+org.apache.catalina.core.ContainerBase.[Catalina].[localhost].handlers = \
+    2localhost.org.apache.juli.FileHandler
+```
+
+Levels in order of verbosity: `SEVERE` → `WARNING` → `INFO` → `CONFIG` → `FINE` → `FINER` → `FINEST`
+
+### Logging From Your Servlet
+```java
+public class MyServlet extends HttpServlet {
+
+    protected void doGet(HttpServletRequest req, HttpServletResponse res) {
+        getServletContext().log("Handling request from: " + req.getRemoteAddr());
+    }
+}
+```
+
+Appears in `logs/localhost.YYYY-MM-DD.log`.
+
+### Watching Logs in Real Time
+```bash
+tail -f logs/catalina.out
+```
+
+---
+
+## 10. Security
+
+### Blocking Access to Sensitive Directories
+
+`WEB-INF/` and `META-INF/` are **automatically protected** by Tomcat — the browser can never request files directly from these directories. Always put JSP files and config inside `WEB-INF/`:
+```
+WEB-INF/
+├── jsp/
+│   └── profile.jsp    ← not directly accessible by URL
+└── web.xml
+```
+
+Serve them only via servlet forward:
+```java
+req.getRequestDispatcher("/WEB-INF/jsp/profile.jsp").forward(req, res);
+```
+
+### Role-Based Access in `web.xml`
+```xml
+<security-constraint>
+    <web-resource-collection>
+        <web-resource-name>Admin Area</web-resource-name>
+        <url-pattern>/admin/*</url-pattern>
+    </web-resource-collection>
+    <auth-constraint>
+        <role-name>admin</role-name>
+    </auth-constraint>
+</security-constraint>
+
+<login-config>
+    <auth-method>FORM</auth-method>
+    <form-login-config>
+        <form-login-page>/login.html</form-login-page>
+        <form-error-page>/login-error.html</form-error-page>
+    </form-login-config>
+</login-config>
+```
+
+---
+
+## 11. HTTPS Configuration
+
+Generate a self-signed keystore (development only):
+```bash
+keytool -genkey -alias tomcat -keyalg RSA \
+        -keystore conf/keystore.jks \
+        -keysize 2048
+```
+
+Enable HTTPS in `server.xml`:
+```xml
+<Connector
+    port="8443"
+    protocol="org.apache.coyote.http11.Http11NioProtocol"
+    SSLEnabled="true"
+    maxThreads="150"
+    scheme="https"
+    secure="true"
+    keystoreFile="conf/keystore.jks"
+    keystorePass="yourpassword"
+    clientAuth="false"
+    sslProtocol="TLS" />
+```
+
+Your app is now available at:
+```
+https://localhost:8443/myapp
+```
+
+To force HTTP → HTTPS redirect, add to `web.xml`:
+```xml
+<security-constraint>
+    <web-resource-collection>
+        <web-resource-name>All</web-resource-name>
+        <url-pattern>/*</url-pattern>
+    </web-resource-collection>
+    <user-data-constraint>
+        <transport-guarantee>CONFIDENTIAL</transport-guarantee>
+    </user-data-constraint>
+</security-constraint>
+```
+
+---
+
+## 12. Running Tomcat with Docker
+
+### Minimal Dockerfile
+```dockerfile
+FROM tomcat:11-jdk17
+
+# Remove default apps (optional, recommended for production)
+RUN rm -rf /usr/local/tomcat/webapps/*
+
+# Copy your WAR
+COPY target/myapp.war /usr/local/tomcat/webapps/ROOT.war
+
+EXPOSE 8080
+CMD ["catalina.sh", "run"]
+```
+
+### With Custom Config
+```dockerfile
+FROM tomcat:11-jdk17
+
+RUN rm -rf /usr/local/tomcat/webapps/*
+
+COPY target/myapp.war    /usr/local/tomcat/webapps/ROOT.war
+COPY conf/server.xml     /usr/local/tomcat/conf/server.xml
+COPY conf/context.xml    /usr/local/tomcat/conf/context.xml
+
+EXPOSE 8080
+CMD ["catalina.sh", "run"]
+```
+
+### Docker Compose with PostgreSQL
+```yaml
+services:
+  tomcat:
+    build: .
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+    networks:
+      - app-net
+
+  postgres:
+    image: postgres:latest
+    environment:
+      POSTGRES_DB:       mydb
+      POSTGRES_USER:     user
+      POSTGRES_PASSWORD: secret
+    volumes:
+      - ./sql:/docker-entrypoint-initdb.d
+    networks:
+      - app-net
+
+networks:
+  app-net:
+    driver: bridge
+```
+```bash
+docker compose up --build
+docker compose down --volumes --remove-orphans
+```
+
+---
+
+## 13. Common Issues
+
+### Port Already in Use
+```
+Address already in use: bind
+```
+```bash
+# Find what's using port 8080
+lsof -i :8080
+kill -9 <PID>
+```
+
+Or change the port in `server.xml`:
+```xml
+<Connector port="9090" ... />
+```
+
+### `ClassNotFoundException` on Startup
+
+Your servlet class isn't in `WEB-INF/classes/` or a JAR in `WEB-INF/lib/`. Check your build output:
+```bash
 mvn clean package
+jar tf target/myapp.war | grep ".class"
+```
 
-Maven will:
+### JSP Changes Not Reflecting
 
-Compile Java → .class
+Delete the compiled JSP cache:
+```bash
+rm -rf work/Catalina/localhost/myapp/
+```
 
-Copy them into:
+Then restart Tomcat.
 
-target/myapp/WEB-INF/classes/
+### 404 on All Requests
 
-Create:
+Check that:
+1. The WAR deployed correctly — look in `logs/catalina.out` for errors
+2. The URL pattern in `@WebServlet` matches what you're requesting
+3. The context path is correct (`/myapp/login` not `/login`)
 
-target/myapp.war
-📦 What WAR Actually Contains
+### OutOfMemoryError
 
-If you unzip the WAR:
+Increase heap in `bin/setenv.sh`:
+```bash
+export JAVA_OPTS="-Xms256m -Xmx1024m -XX:MaxMetaspaceSize=256m"
+```
 
-myapp.war
-│
-├── META-INF/
-├── WEB-INF/
-│   ├── web.xml
-│   ├── classes/
-│   │   └── com/example/HelloServlet.class
-│   └── lib/
-└── (static files if any)
+---
 
-This matches the structure you asked about earlier.
+## 14. Resources
 
-🚀 Step 6: Deploy to Tomcat
-
-Copy WAR to:
-
-apache-tomcat/webapps/
-
-Start Tomcat:
-
-bin/startup.sh
-
-Tomcat automatically:
-
-Detects myapp.war
-
-Extracts it into:
-
-webapps/myapp/
-
-Reads web.xml
-
-Loads servlets
-
-Starts serving requests
-
-🌍 Access Your Servlet
-
-Open browser:
-
-http://localhost:8080/myapp/hello
-
-You’ll see:
-
-Hello from Servlet!
+- [Apache Tomcat Official Documentation](https://tomcat.apache.org/tomcat-11.0-doc/index.html)
+- [Tomcat Configuration Reference — server.xml](https://tomcat.apache.org/tomcat-11.0-doc/config/index.html)
+- [Tomcat Connector Configuration](https://tomcat.apache.org/tomcat-11.0-doc/config/http.html)
+- [Java Servlet Technology — Oracle Java EE 6 Tutorial](https://docs.oracle.com/javaee/6/tutorial/doc/bnafd.html)
+- [Uploading Files with Java Servlet Technology — Oracle Java EE 6 Tutorial](https://docs.oracle.com/javaee/6/tutorial/doc/glrbb.html)

@@ -1334,3 +1334,8 @@ Application  ServletContext  App start → stop
 Session      HttpSession     Login    → logout/timeout
 Request      HttpServletReq  Request  → response sent
 ```
+
+## Resources
+
+- [Java Servlet Technology — Oracle Java EE 6 Tutorial](https://docs.oracle.com/javaee/6/tutorial/doc/bnafd.html)
+- [Uploading Files with Java Servlet Technology — Oracle Java EE 6 Tutorial](https://docs.oracle.com/javaee/6/tutorial/doc/glrbb.html)
