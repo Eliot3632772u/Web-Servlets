@@ -10,9 +10,9 @@ COPY apache-tomcat-11.0.18 /tmp/apache-tomcat-11.0.18
 
 WORKDIR /tmp/Cinema
 
-RUN mvn package
+# RUN mvn package
 
-RUN mv target/ROOT.war ../apache-tomcat-11.0.18/webapps/
+# RUN mv target/ROOT.war ../apache-tomcat-11.0.18/webapps/
 
-# CMD ["../apache-tomcat-11.0.18/bin/catalina.sh", "run"]
-CMD ["sh", "-c", "sleep 10 && ../apache-tomcat-11.0.18/bin/catalina.sh run"]
+# # CMD ["../apache-tomcat-11.0.18/bin/catalina.sh", "run"]
+# CMD ["sh", "-c", "sleep 10 && ../apache-tomcat-11.0.18/bin/catalina.sh run"]
