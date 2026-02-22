@@ -1,1427 +1,652 @@
-1️⃣ What Is a Servlet?
+# Java Servlet API — Complete Guide
 
-A Servlet is a Java class that runs inside a web server (like:
+A comprehensive guide covering everything you need to understand and build Java web applications using the Servlet API.
 
-Apache Tomcat
+---
 
-Jetty
+## Table of Contents
 
-)
+1. [What Is a Servlet?](#1-what-is-a-servlet)
+2. [The Servlet Container](#2-the-servlet-container)
+3. [Servlet Lifecycle](#3-servlet-lifecycle)
+4. [Core Servlet Classes](#4-core-servlet-classes)
+5. [HttpServletRequest](#5-httpservletrequest)
+6. [HttpServletResponse](#6-httpservletresponse)
+7. [ServletContext](#7-servletcontext)
+8. [Servlet Annotations](#8-servlet-annotations)
+9. [Listeners](#9-listeners)
+10. [Filters](#10-filters)
+11. [Dispatcher Types](#11-dispatcher-types)
+12. [RequestDispatcher](#12-requestdispatcher)
+13. [Session Management](#13-session-management)
+14. [Graceful Shutdown](#14-graceful-shutdown)
+15. [File Upload](#15-file-upload)
 
-It handles HTTP requests and generates HTTP responses.
+---
 
+## 1. What Is a Servlet?
 
+### The Problem
 
+Before servlets, web applications were built with:
 
-2️⃣ What Problem Does It Solve?
+- **Static HTML** — cannot handle logins, databases, or dynamic content
+- **CGI scripts** — dynamic but extremely slow (new process created per request)
 
-Before servlets, websites were mostly:
+Neither approach could handle:
+- User authentication
+- Database queries
+- Form processing
+- Session state
 
-Static HTML files
+### The Solution
 
-CGI scripts (very slow, heavy process creation)
+A **Servlet** is a Java class that runs inside a web server and handles HTTP requests dynamically.
 
-🚨 The Problem
+Servlets solve all of these problems:
 
-Static websites cannot:
+| Problem | Servlet Solution |
+|---|---|
+| Static pages | Generates dynamic HTML at runtime |
+| Heavy CGI processes | Runs once, stays in memory, handles threads |
+| No session state | Built-in `HttpSession` management |
+| No database access | Java code — use any JDBC/ORM |
+```java
+public class HelloServlet extends HttpServlet {
 
-Handle logins
+    protected void doGet(HttpServletRequest request,
+                         HttpServletResponse response)
+            throws IOException {
 
-Connect to databases
+        response.setContentType("text/html");
+        response.getWriter().println("<h1>Hello, " +
+            request.getParameter("name") + "!</h1>");
+    }
+}
+```
 
-Process forms
+---
 
-Create dynamic pages
+## 2. The Servlet Container
 
-Maintain sessions
+### What It Is
 
-You need something that:
+A **Servlet Container** (also called a web container) is the program that runs your servlets. You never write socket or threading code — the container handles all of that.
 
-Receives HTTP requests
+Popular containers:
+- **Apache Tomcat** (most common)
+- **Eclipse Jetty**
+- **WildFly**
 
-Reads parameters
+### What the Container Does For You
 
-Talks to database
+**1. HTTP Handling**
+```
+Browser → TCP Connection → Container parses HTTP → Creates Java objects
+```
 
-Generates dynamic responses
+**2. URL-to-Servlet Mapping**
 
-Stays alive in memory (efficient)
+The container builds an internal mapping table at startup:
+```
+"/hello"    → HelloServlet instance
+"/api/*"    → ApiServlet instance
+"*.jsp"     → JspServlet instance
+```
 
-✅ The Solution
+Mapping types in order of priority:
 
-Servlets:
+| Type | Pattern Example | Description |
+|---|---|---|
+| Exact match | `/login` | Only matches this exact URL |
+| Path match | `/api/*` | Matches any URL under `/api/` |
+| Extension match | `*.jsp` | Matches any URL ending in `.jsp` |
+| Default | `/` | Catches everything else |
 
-Run once
+**3. Request/Response Object Creation**
 
-Stay in memory
+For every request the container creates:
+```java
+HttpServletRequest req  = new RequestImpl(...);  // wraps raw HTTP
+HttpServletResponse res = new ResponseImpl(...); // wraps output stream
+```
 
-Handle thousands of requests using threads
+**4. Thread Management**
 
-Allow dynamic web applications
+The container creates (or reuses) a thread per request:
+```java
+// Conceptually, for each request:
+Thread t = new Thread(() -> servlet.service(request, response));
+t.start();
+```
 
-They solve the "dynamic server-side logic" problem.
+**5. Other Responsibilities**
 
+- Session management (generates `JSESSIONID`)
+- Application isolation (each app has its own classloader and `ServletContext`)
+- Servlet lifecycle management
 
+### Web Application Structure
+```
+myapp/
+├── WEB-INF/
+│   ├── web.xml          ← deployment descriptor
+│   ├── classes/         ← compiled .class files
+│   └── lib/             ← dependency JARs
+├── index.html
+└── styles.css
+```
 
-3️⃣ Where Do Servlets Run?
+The **context path** is the application name in the URL:
+```
+http://localhost:8080/myapp/login
+                      ↑      ↑
+               context path  servlet path
+```
 
-Servlets run inside a Servlet Container.
+---
 
-Example:
+## 3. Servlet Lifecycle
 
-Apache Tomcat
+Every servlet follows this exact lifecycle, managed entirely by the container:
+```
+                 ┌─────────────────┐
+                 │   Class Loading  │  ← Tomcat loads the .class file
+                 └────────┬────────┘
+                          ↓
+                 ┌─────────────────┐
+                 │  Instantiation  │  ← new HelloServlet() — ONCE ONLY
+                 └────────┬────────┘
+                          ↓
+                 ┌─────────────────┐
+                 │     init()      │  ← called once, for setup
+                 └────────┬────────┘
+                          ↓
+         ┌────────────────────────────────┐
+         │         service()              │  ← called per request
+         │                               │
+         │  GET  → doGet()               │
+         │  POST → doPost()              │
+         │  PUT  → doPut()               │
+         └────────────────────────────────┘
+                          ↓
+                 ┌─────────────────┐
+                 │   destroy()     │  ← called once, on shutdown
+                 └─────────────────┘
+```
 
-The container:
+### Single Instance, Multiple Threads
 
-Manages servlet lifecycle
-
-Creates servlet objects
-
-Calls their methods
-
-Manages threads
-
-Handles networking
-
-You don’t write socket code — Tomcat does that.
-
-
-
-
-Step 3 — Servlet Lifecycle
-
-Every servlet follows this lifecycle:
-
-1️⃣ Loading
-
-Tomcat loads the class.
-
-2️⃣ Instantiation
-
-Tomcat creates one instance of the servlet:
-
+⚠️ This is critical to understand:
+```java
+// Tomcat creates ONE object total:
 HelloServlet servlet = new HelloServlet();
 
-⚠ Important:
-Only ONE object is created (usually).
+// But many threads call it simultaneously:
+// Thread 1 (User A) → servlet.service(req1, res1)
+// Thread 2 (User B) → servlet.service(req2, res2)
+// Thread 3 (User C) → servlet.service(req3, res3)
+```
 
-3️⃣ init()
+This means **servlets must be thread-safe**. Never store request-specific data in instance fields:
+```java
+// ❌ WRONG — shared between all users
+public class BadServlet extends HttpServlet {
+    private String username; // race condition!
 
-Called once:
-
-public void init() {
-    // initialization code
+    protected void doGet(...) {
+        username = request.getParameter("user");
+    }
 }
 
-Used for:
-
-DB connections
-
-Configuration
-
-Setup
-
-4️⃣ service()
-
-For every request:
-
-public void service(...)
-
-If it's an HTTP servlet:
-
-GET → doGet()
-
-POST → doPost()
-
-5️⃣ destroy()
-
-When server shuts down:
-
-public void destroy()
-
-
-
-
-3️⃣ HttpServlet (Most Important)
-
-From:
-
-javax.servlet.http
-
-This is what you normally extend:
-
-public class HelloServlet extends HttpServlet {
+// ✅ CORRECT — local variables are thread-safe
+public class GoodServlet extends HttpServlet {
+    protected void doGet(...) {
+        String username = request.getParameter("user"); // local = safe
+    }
 }
+```
 
-It gives you:
+### init() and destroy()
+```java
+public class DatabaseServlet extends HttpServlet {
 
-doGet()
-doPost()
-doPut()
-doDelete()
+    private ConnectionPool pool;
 
+    @Override
+    public void init() throws ServletException {
+        // runs once at startup — safe to initialize shared resources
+        pool = new ConnectionPool();
+    }
 
+    @Override
+    protected void doGet(HttpServletRequest req, HttpServletResponse res)
+            throws IOException {
+        // use pool here
+    }
 
+    @Override
+    public void destroy() {
+        // runs once at shutdown — close shared resources
+        pool.shutdown();
+    }
+}
+```
 
-1️⃣ What is HttpServletRequest?
+---
 
-Class from:
+## 4. Core Servlet Classes
 
-jakarta.servlet.http.HttpServletRequest
+### Inheritance Chain
+```
+Object
+  └── GenericServlet          ← protocol-independent base
+        └── HttpServlet       ← HTTP-specific, what you extend
+              └── YourServlet ← your code
+```
 
-It represents:
+### `GenericServlet`
 
-The FULL HTTP request sent by the client.
+Protocol-independent base class. Provides:
+```java
+getServletContext()   // access application-wide state
+getServletConfig()    // access init parameters
+log("message")        // logging
+```
 
-When a browser sends:
+### `HttpServlet`
 
+What you always extend. Provides HTTP-specific methods:
+```java
+protected void doGet(HttpServletRequest req, HttpServletResponse res)  {}
+protected void doPost(HttpServletRequest req, HttpServletResponse res) {}
+protected void doPut(HttpServletRequest req, HttpServletResponse res)  {}
+protected void doDelete(HttpServletRequest req, HttpServletResponse res){}
+```
+
+The base `service()` method routes to the correct `doXxx()` based on HTTP method:
+```java
+// Inside HttpServlet (simplified):
+protected void service(HttpServletRequest req, HttpServletResponse res) {
+    String method = req.getMethod();
+    if (method.equals("GET"))       doGet(req, res);
+    else if (method.equals("POST")) doPost(req, res);
+    // ...
+}
+```
+
+### `ServletConfig`
+
+Per-servlet configuration, injected by the container during `init()`:
+```java
+public void init(ServletConfig config) {
+    String timeout = config.getInitParameter("timeout");
+    ServletContext ctx = config.getServletContext();
+}
+```
+
+---
+
+## 5. HttpServletRequest
+
+Represents the full HTTP request sent by the browser. The container parses the raw HTTP text and gives you a Java object.
+```
 POST /login HTTP/1.1
 Host: localhost:8080
-Content-Type: application/x-www-form-urlencoded
-Cookie: JSESSIONID=123
+Cookie: JSESSIONID=abc123
 
-username=user&password=123
+username=john&password=secret
+         ↓
+HttpServletRequest object
+```
 
-Tomcat parses that raw text and builds a Java object:
+### What You Can Get From It
+```java
+// HTTP method
+String method = request.getMethod();         // "GET", "POST"
 
-HttpServletRequest request
+// URL information
+String uri  = request.getRequestURI();       // /myapp/login
+String ctx  = request.getContextPath();      // /myapp
+String path = request.getServletPath();      // /login
 
-This object contains everything about the request.
+// Query parameters (/search?q=java&page=2)
+String query = request.getParameter("q");    // "java"
+String page  = request.getParameter("page"); // "2"
 
-What does it contain?
-1️⃣ HTTP Method
-request.getMethod(); // "GET" or "POST"
-2️⃣ URL Information
-request.getRequestURI();     // /login
-request.getContextPath();    // /myapp
-request.getServletPath();    // /login
-3️⃣ Query Parameters
+// Form data (POST body) — Tomcat parses it for you
+String user  = request.getParameter("username");
+String pass  = request.getParameter("password");
 
-If URL is:
+// Headers
+String agent  = request.getHeader("User-Agent");
+String cookie = request.getHeader("Cookie");
 
-/search?q=java&page=2
-request.getParameter("q"); // java
-request.getParameter("page"); // 2
-4️⃣ Form Data (POST body)
-request.getParameter("username");
+// Client info
+String ip = request.getRemoteAddr();         // client IP address
 
-Tomcat already parsed the body for you.
-
-5️⃣ Headers
-request.getHeader("User-Agent");
-request.getHeader("Cookie");
-6️⃣ Session
+// Session
 HttpSession session = request.getSession();
 
-This is how login systems work.
+// Raw body (for JSON etc.)
+InputStream body = request.getInputStream();
+```
 
-7️⃣ InputStream
+---
 
-If JSON:
+## 6. HttpServletResponse
 
-request.getInputStream();
-
-
-
-
-2️⃣ What is HttpServletResponse?
-
-Represents:
-
-The HTTP response that will be sent back to the client.
-
-You control what goes back to the browser.
-
-What can you control?
-1️⃣ Status Code
+Represents what you send back to the browser. You control everything.
+```java
+// Status code
 response.setStatus(200);
-response.setStatus(404);
-2️⃣ Headers
-response.setHeader("Content-Type", "application/json");
-3️⃣ Content Type
-response.setContentType("text/html");
-4️⃣ Body
+response.setStatus(HttpServletResponse.SC_NOT_FOUND); // 404
+
+// Headers
+response.setHeader("X-Custom-Header", "value");
+response.setContentType("text/html;charset=UTF-8");
+response.setContentLengthLong(file.length());
+
+// Write HTML body
 PrintWriter out = response.getWriter();
-out.println("<h1>Hello</h1>");
+out.println("<h1>Hello World</h1>");
 
+// Write binary body (images, files)
+OutputStream out = response.getOutputStream();
+out.write(bytes);
 
+// Redirect browser to another URL
+response.sendRedirect("/profile");
 
+// Send error
+response.sendError(HttpServletResponse.SC_FORBIDDEN, "Access denied");
+```
 
+### Forward vs Redirect
 
-3️⃣ “Tomcat Creates One Instance of the Servlet” — What Does That Mean?
+| | `forward()` | `sendRedirect()` |
+|---|---|---|
+| Happens on | Server side | Client side (new request) |
+| URL changes? | No | Yes |
+| Speed | Faster | Slower (extra round trip) |
+| Data sharing | Via request attributes | Via session |
 
-This is VERY important.
+---
 
-Suppose you write:
+## 7. ServletContext
 
-public class LoginServlet extends HttpServlet {
-}
+### One Per Web Application
 
-When Tomcat starts:
+There is exactly **one** `ServletContext` per deployed web application, shared by all servlets:
+```
+Tomcat
+ ├── /app1  → ServletContext_app1  (shared by ALL servlets in app1)
+ └── /app2  → ServletContext_app2  (shared by ALL servlets in app2)
+```
 
-Step 1 — Class Loading
+### How Servlets Get Access To It
 
-Tomcat loads:
-
-LoginServlet.class
-Step 2 — Instantiation
-
-Tomcat creates ONE object:
-
-LoginServlet servlet = new LoginServlet();
-
-ONLY ONE.
-
-Not per request.
-
-Step 3 — Initialization
-
-Tomcat calls:
-
-servlet.init();
-
-Once.
-
-Step 4 — Requests Come In
-
-For each HTTP request:
-
-Tomcat does:
-
-Thread t = new Thread(() -> {
-    servlet.service(request, response);
-});
-t.start();
-
-⚠ IMPORTANT:
-
-Multiple threads call the SAME servlet object.
-
-Example:
-
-User A → Thread 1 → servlet.service()
-
-User B → Thread 2 → servlet.service()
-
-User C → Thread 3 → servlet.service()
-
-All using the SAME object.
-
-Why Only One Instance?
-
-Because:
-
-Creating objects per request is expensive
-
-Keeping one instance saves memory
-
-Allows efficient threading
-
-This is why:
-
-⚠ Servlets must be thread-safe.
-
-
-
-
-
-4️⃣ How Tomcat Internally Maps URLs to Servlets
-
-Now we go deep.
-
-Step 1 — You Define Mapping
-
-Either in:
-
-Old way — web.xml
-<servlet>
-    <servlet-name>Hello</servlet-name>
-    <servlet-class>com.example.HelloServlet</servlet-class>
-</servlet>
-
-<servlet-mapping>
-    <servlet-name>Hello</servlet-name>
-    <url-pattern>/hello</url-pattern>
-</servlet-mapping>
-Modern way — Annotation
-@WebServlet("/hello")
-public class HelloServlet extends HttpServlet {
-}
-Step 2 — Tomcat Startup
-
-When Tomcat starts:
-
-Scans web.xml
-
-Scans annotations
-
-Builds internal mapping table
-
-Internally something like:
-
-Map<String, HttpServlet> urlMappings;
-
-urlMappings.put("/hello", helloServletInstance);
-Step 3 — HTTP Request Arrives
-
-Browser sends:
-
-GET /myapp/hello HTTP/1.1
-
-Tomcat parses:
-
-Context path: /myapp
-
-Servlet path: /hello
-
-Step 4 — Mapping Algorithm
-
-Tomcat checks mapping rules in order:
-
-Exact match
-
-Path match (/api/*)
-
-Extension match (*.jsp)
-
-Default servlet
-
-Example matching rules:
-
-Pattern	Matches
-/hello	exact
-/api/*	path
-*.jsp	extension
-Step 5 — Found Matching Servlet
-
-Tomcat finds:
-
-HelloServlet instance
-Step 6 — Create Request/Response Objects
-
-Tomcat creates:
-
-HttpServletRequest req = new RequestImpl(...);
-HttpServletResponse res = new ResponseImpl(...);
-
-These are internal implementations.
-
-Step 7 — Call Service
-servlet.service(req, res);
-
-Inside HttpServlet:
-
-protected void service(...) {
-    if (method.equals("GET")) {
-        doGet(req, res);
-    }
-}
-
-
-
-
-
-
-
-
-1️⃣ What Are Servlet Lifecycle Events?
-
-In a web application, many important things happen automatically:
-
-Application starts
-
-Application shuts down
-
-User logs in (session created)
-
-User logs out (session destroyed)
-
-Request begins
-
-Request ends
-
-Attribute added to session
-
-Attribute added to application context
-
-These are called lifecycle events.
-
-They are events generated by the servlet container (like Apache Tomcat).
-
-2️⃣ What Problem Do Listeners Solve?
-
-Without listeners:
-
-You would need to manually put logging or initialization logic inside every servlet.
-
-Example problems:
-
-How do you initialize a database connection pool when the app starts?
-
-How do you log when a session is created?
-
-How do you clean up resources when the app shuts down?
-
-How do you track active users?
-
-You don’t want to do this inside doGet().
-
-Listeners allow you to:
-
-React automatically when container-level events happen.
-
-They implement the Observer pattern.
-
-Container = event source
-Listener = event observer
-
-3️⃣ The 3 Main Scopes in a Web App
-
-Understanding listeners requires understanding scopes.
-
-1️⃣ Application Scope (ServletContext)
-
-One per web application.
-
-Shared across ALL users.
-
-2️⃣ Session Scope (HttpSession)
-
-One per user.
-
-Created when user visits.
-
-3️⃣ Request Scope (ServletRequest)
-
-One per HTTP request.
-
-Created for each request.
-
-Each of these scopes has lifecycle events.
-
-4️⃣ ServletContextListener (Application Level)
-
-Interface:
-
-javax.servlet.ServletContextListener
-
-Monitors:
-
-Application startup
-
-Application shutdown
-
-Event class:
-
-ServletContextEvent
-When Is It Triggered?
-On Server Startup:
-
-Tomcat loads your app → creates ServletContext → fires:
-
-contextInitialized()
-On Shutdown:
-
-Tomcat stops → fires:
-
-contextDestroyed()
-Example
-import javax.servlet.ServletContextListener;
-import javax.servlet.ServletContextEvent;
-import javax.servlet.annotation.WebListener;
-
-@WebListener
-public class AppStartupListener implements ServletContextListener {
-
-    @Override
-    public void contextInitialized(ServletContextEvent sce) {
-        System.out.println("Application started");
-    }
-
-    @Override
-    public void contextDestroyed(ServletContextEvent sce) {
-        System.out.println("Application stopped");
-    }
-}
-Real Use Case
-
-Initialize database pool:
-
-public void contextInitialized(ServletContextEvent sce) {
-    ConnectionPool pool = new ConnectionPool();
-    sce.getServletContext().setAttribute("dbPool", pool);
-}
-
-Now all servlets can use it.
-
-5️⃣ ServletContextAttributeListener
-
-Monitors when attributes are added to application scope.
-
-Events:
-
-attributeAdded
-
-attributeRemoved
-
-attributeReplaced
-
-Event class:
-
-ServletContextAttributeEvent
-
-Example:
-
-public void attributeAdded(ServletContextAttributeEvent event) {
-    System.out.println("Added: " + event.getName());
-}
-
-Triggered when:
-
-context.setAttribute("key", value);
-6️⃣ HttpSessionListener (User Session Level)
-
-Interface:
-
-javax.servlet.http.HttpSessionListener
-
-Monitors:
-
-Session creation
-
-Session destruction
-
-Event class:
-
-HttpSessionEvent
-When Does a Session Get Created?
-
-When:
-
-request.getSession();
-
-is called.
-
-Example
-import javax.servlet.http.HttpSessionListener;
-import javax.servlet.http.HttpSessionEvent;
-import javax.servlet.annotation.WebListener;
-
-@WebListener
-public class SessionListener implements HttpSessionListener {
-
-    @Override
-    public void sessionCreated(HttpSessionEvent se) {
-        System.out.println("Session created: " + se.getSession().getId());
-    }
-
-    @Override
-    public void sessionDestroyed(HttpSessionEvent se) {
-        System.out.println("Session destroyed");
-    }
-}
-Real Use Case
-
-Track active users:
-
-private static int activeUsers = 0;
-
-public void sessionCreated(HttpSessionEvent se) {
-    activeUsers++;
-}
-
-public void sessionDestroyed(HttpSessionEvent se) {
-    activeUsers--;
-}
-7️⃣ HttpSessionAttributeListener
-
-Triggered when session attributes change:
-
-session.setAttribute("user", userObject);
-
-Methods:
-
-attributeAdded
-
-attributeRemoved
-
-attributeReplaced
-
-Event type:
-
-HttpSessionBindingEvent
-8️⃣ ServletRequestListener (Request Level)
-
-Triggered:
-
-When request starts
-
-When request ends
-
-Event class:
-
-ServletRequestEvent
-Example
-@WebListener
-public class RequestListener implements ServletRequestListener {
-
-    public void requestInitialized(ServletRequestEvent sre) {
-        System.out.println("Request started");
-    }
-
-    public void requestDestroyed(ServletRequestEvent sre) {
-        System.out.println("Request finished");
-    }
-}
-
-Useful for:
-
-Logging
-
-Performance timing
-
-Security checks
-
-
-
-
-
-
-
-1️⃣ What Is a Servlet Container?
-
-A Servlet Container is a program that:
-
-Runs servlets
-
-Manages their lifecycle
-
-Handles HTTP communication
-
-Creates request/response objects
-
-Manages sessions
-
-Handles threading
-
-Manages application isolation
-
-The most famous example is:
-
-Apache Tomcat
-
-Other examples include:
-
-Jetty
-
-WildFly
-
-What Does the Container Actually Do?
-
-Imagine you write this:
-
-@WebServlet("/hello")
-public class HelloServlet extends HttpServlet {
-    protected void doGet(HttpServletRequest req, HttpServletResponse res) {
-        res.getWriter().println("Hello");
-    }
-}
-
-You never:
-
-Open a socket
-
-Parse HTTP
-
-Create threads
-
-Manage sessions
-
-Manage lifecycle
-
-The container does all of this.
-
-Internal Responsibilities of a Servlet Container
-1️⃣ HTTP Handling
-
-Opens port (8080)
-
-Listens for TCP connections
-
-Parses HTTP request
-
-Creates request/response objects
-
-2️⃣ Servlet Lifecycle
-
-Loads servlet class
-
-Creates instance
-
-Calls init()
-
-Calls service()
-
-Calls destroy()
-
-3️⃣ Thread Management
-
-For each request:
-
-Creates (or reuses) a thread
-
-Calls servlet.service()
-
-4️⃣ Session Management
-
-Generates JSESSIONID
-
-Stores session objects
-
-Handles timeout
-
-5️⃣ Application Isolation
-
-If you deploy two web apps:
-
-/app1
-
-/app2
-
-They are isolated.
-
-Each has:
-
-Its own classloader
-
-Its own ServletContext
-
-Its own servlets
-
-2️⃣ What Is a “Web Application”?
-
-In a servlet container, an “application” means:
-
-A deployed web module.
-
-Example:
-
-Inside Tomcat:
-
-webapps/
-   app1/
-   app2/
-
-If you access:
-
-http://localhost:8080/app1
-http://localhost:8080/app2
-
-These are two separate web applications.
-
-Each application:
-
-Has its own WEB-INF folder
-
-Has its own classes
-
-Has its own servlets
-
-Has its own ServletContext
-
-3️⃣ What Is ServletContext Exactly?
-
-Now we clarify the confusion.
-
-You misunderstood this part:
-
-❌ “There is one ServletContext per servlet”
-✅ Correct statement: There is one ServletContext per web application.
-
-Not per servlet.
-
-Correct Rule
-
-Inside ONE application:
-
-All servlets share the SAME ServletContext object.
-
-Between DIFFERENT applications:
-
-Each application has its OWN ServletContext.
-
-4️⃣ Let’s Visualize It
-
-Suppose Tomcat is running.
-
-You deploy:
-
-/app1
-
-/app2
-
-Internally Tomcat creates:
-
-ServletContext_app1
-ServletContext_app2
-
-Now inside app1:
-
-Servlet A
-
-Servlet B
-
-Servlet C
-
-All of them receive:
-
-ServletContext_app1
-
-Inside app2:
-
-Servlet X
-
-Servlet Y
-
-They receive:
-
-ServletContext_app2
-
-So:
-
-✔ Servlets inside the SAME app share context
-✔ Different apps have different contexts
-
-5️⃣ Why Do Servlets Share It?
-
-Because during initialization:
-
-Tomcat does something conceptually like:
-
-ServletContext context = new ApplicationContext();
-
-HelloServlet servlet1 = new HelloServlet();
-LoginServlet servlet2 = new LoginServlet();
-
-inject(context, servlet1);
-inject(context, servlet2);
-
-So both servlets store reference to the SAME object.
-
-That’s why:
-
-context.setAttribute("appName", "MyApp");
-
-in Servlet A
-
-and
-
-context.getAttribute("appName");
-
-in Servlet B
-
-works.
-
-Because they reference the same object in memory.
-
-
-
-
-
-
-
-
-
-1️⃣ Where does getServletContext() come from?
-
-getServletContext() is a method defined in:
-
-jakarta.servlet.GenericServlet
-
-And since:
-
-HttpServlet extends GenericServlet
-
-Every servlet automatically inherits:
-
-public ServletContext getServletContext()
-
-So when you write:
-
-ServletContext context = getServletContext();
-
-You are calling a method inherited from GenericServlet.
-
-The Inheritance Chain
-Object
-   ↓
-GenericServlet
-   ↓
-HttpServlet
-   ↓
-YourServlet
-
-So your servlet class already has access to:
-
-getServletContext()
-2️⃣ How Does It Actually Work Internally?
-
-When the container (like Apache Tomcat) starts your application:
-
-Step 1 — It creates a ServletContext object
-
-One per web application.
-
-Something like:
-
-ServletContext context = new StandardServletContext();
-
-This object represents:
-
-The entire web application
-
-Shared application-level state
-
-Step 2 — It injects it into the servlet during initialization
-
-When Tomcat calls:
-
-servlet.init(ServletConfig config);
-
-ServletConfig contains a reference to ServletContext.
-
-Inside GenericServlet, the code looks conceptually like this:
-
-private ServletConfig config;
-
-public void init(ServletConfig config) {
-    this.config = config;
-}
-
+The container injects it during `init()` via `ServletConfig`. `GenericServlet` stores it and exposes `getServletContext()`:
+```java
+// Simplified internals of GenericServlet:
 public ServletContext getServletContext() {
-    return config.getServletContext();
+    return config.getServletContext(); // returns the shared context object
 }
+```
 
-So:
+### What You Can Do With It
 
-getServletContext()
-→ config.getServletContext()
-→ container’s ServletContext object
+**1. Share data between servlets**
+```java
+// In Servlet A (or a listener at startup):
+getServletContext().setAttribute("dbPool", pool);
 
-It’s just returning the global application context object.
-
-3️⃣ What Is ServletContext Exactly?
-
-ServletContext represents:
-
-The entire web application environment.
-
-There is exactly ONE per deployed web app.
-
-If you deploy two applications:
-
-/app1
-
-/app2
-
-Each has its own ServletContext.
-
-4️⃣ Where Is It Used?
-
-It is used for application-wide shared data and configuration.
-
-Let’s see real examples.
-
-✅ 1. Sharing Data Between Servlets
-
-Servlet A:
-
-ServletContext context = getServletContext();
-context.setAttribute("appName", "MyApp");
-
-Servlet B:
-
-ServletContext context = getServletContext();
-String name = (String) context.getAttribute("appName");
-
-This works because they share the same context object.
-
-✅ 2. Storing Global Objects (Database Pool)
-
-During startup (via listener):
-
-public void contextInitialized(ServletContextEvent sce) {
-    ConnectionPool pool = new ConnectionPool();
-    sce.getServletContext().setAttribute("dbPool", pool);
-}
-
-Then in any servlet:
-
-ConnectionPool pool = 
+// In Servlet B:
+ConnectionPool pool =
     (ConnectionPool) getServletContext().getAttribute("dbPool");
+```
 
-This is very common in real applications.
-
-✅ 3. Accessing Configuration Parameters
-
-In web.xml:
-
+**2. Read application-wide config (from web.xml)**
+```xml
+<!-- web.xml -->
 <context-param>
     <param-name>appVersion</param-name>
     <param-value>1.0</param-value>
 </context-param>
-
-Then in servlet:
-
+```
+```java
 String version = getServletContext().getInitParameter("appVersion");
-✅ 4. Getting Real Path of Files
-String path = getServletContext().getRealPath("/WEB-INF/config.txt");
+```
 
-Used to read files inside web app.
+**3. Access files on disk**
+```java
+String realPath = getServletContext().getRealPath("/WEB-INF/config.txt");
+```
 
-✅ 5. Logging
-getServletContext().log("Application started");
-5️⃣ Where Can You Access ServletContext From?
+**4. Detect MIME types**
+```java
+String mime = getServletContext().getMimeType("photo.png"); // "image/png"
+```
 
-You can get it from:
+### Init Parameter vs Context Parameter
 
-1️⃣ Inside a Servlet
-getServletContext()
-2️⃣ From HttpServletRequest
-request.getServletContext();
+| | Servlet Init Parameter | Context Parameter |
+|---|---|---|
+| Scope | One specific servlet | Entire application |
+| Access | `getServletConfig().getInitParameter()` | `getServletContext().getInitParameter()` |
+| Use case | Servlet-specific config | Global config (DB URL, version) |
 
-Since Servlet 3.0.
+### Thread Safety Warning
 
-3️⃣ From ServletContextEvent (Listener)
-sce.getServletContext();
-6️⃣ When Is It Created and Destroyed?
+`ServletContext` is accessed by all threads simultaneously:
+```java
+// ⚠️ Not thread-safe if multiple threads modify it
+context.setAttribute("counter", count + 1);
 
-Created:
+// ✅ Use thread-safe data structures
+context.setAttribute("map", new ConcurrentHashMap<>());
+```
 
-When the web app starts
+---
 
-When Tomcat deploys the app
+## 8. Servlet Annotations
 
-Destroyed:
+### `@WebServlet`
 
-When the app stops
-
-When server shuts down
-
-That’s why it's called application scope.
-
-7️⃣ Important: Thread Safety
-
-ServletContext is shared by:
-
-All users
-
-All sessions
-
-All threads
-
-All servlets
-
-So:
-
-context.setAttribute("counter", 1);
-
-If multiple threads modify the same object → race conditions.
-
-Best practice:
-Store thread-safe objects (e.g., ConcurrentHashMap).
-
-
-
-
-
-
-
-
-1️⃣ What is @WebServlet?
-
-@WebServlet is an annotation that tells the servlet container (like Apache Tomcat):
-
-“This class is a servlet, and it should handle requests for this URL.”
-
-Before annotations, you had to configure this in web.xml.
-
-Now you just put:
-
+Maps a servlet to a URL without needing `web.xml`:
+```java
 @WebServlet("/report")
+public class ReportServlet extends HttpServlet { }
+```
 
-And that’s enough.
+With multiple attributes:
+```java
+@WebServlet(
+    urlPatterns  = { "/report", "/reports" },
+    loadOnStartup = 1   // initialize at startup, not on first request
+)
+public class ReportServlet extends HttpServlet { }
+```
 
-2️⃣ The Most Important Rule
+`loadOnStartup` value:
+- **Negative** (default) → initialized on first request
+- **0 or positive** → initialized at startup. Lower number = initialized first.
 
-A class annotated with @WebServlet:
+### `@WebInitParam`
 
-✔ Must extend HttpServlet
-✔ Must define at least one URL pattern
-
-3️⃣ The Simplest Example
-import jakarta.servlet.annotation.WebServlet;
-import jakarta.servlet.http.HttpServlet;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
-import java.io.IOException;
-
-@WebServlet("/report")
-public class MoodServlet extends HttpServlet {
-
-    @Override
-    protected void doGet(HttpServletRequest request,
-                         HttpServletResponse response)
-                         throws IOException {
-
-        response.getWriter().println("This is the report page.");
-    }
-}
-
-Now if you visit:
-
-http://localhost:8080/yourApp/report
-
-Tomcat will call this servlet.
-
-That’s it.
-
-4️⃣ value vs urlPatterns
-
-These two are basically the same.
-
-✅ When using only URL
-
-You can write:
-
-@WebServlet("/report")
-
-This uses the value attribute automatically.
-
-It is the same as:
-
-@WebServlet(value = "/report")
-✅ When using multiple settings
-
-If you also want to define other properties (like init parameters), then use urlPatterns.
-
-Example:
-
+Pass configuration values to a specific servlet:
+```java
 @WebServlet(
     urlPatterns = "/report",
-    loadOnStartup = 1
-)
-
-Use urlPatterns when there are multiple attributes.
-
-5️⃣ What Happens Internally?
-
-When Tomcat starts:
-
-It scans your classes
-
-Finds @WebServlet
-
-Creates a mapping:
-
-"/report" → MoodServlet
-
-Creates one instance of MoodServlet
-
-Calls init()
-
-Waits for requests
-
-6️⃣ What Is init()?
-
-init() runs once, when the servlet is created.
-
-Used for:
-
-Reading configuration
-
-Opening files
-
-Connecting to database
-
-Loading resources
-
-Example: Overriding init()
-@WebServlet("/report")
-public class MoodServlet extends HttpServlet {
-
-    private String message;
-
-    @Override
-    public void init() {
-        message = "Report servlet initialized!";
-        System.out.println(message);
-    }
-
-    @Override
-    protected void doGet(HttpServletRequest request,
-                         HttpServletResponse response)
-                         throws IOException {
-
-        response.getWriter().println(message);
-    }
-}
-
-When server starts → prints initialization message.
-
-7️⃣ What Are initParams?
-
-Sometimes a servlet needs configuration.
-
-Instead of hardcoding values, you can pass parameters.
-
-Example Using @WebInitParam
-import jakarta.servlet.annotation.WebServlet;
-import jakarta.servlet.annotation.WebInitParam;
-
-@WebServlet(
-    urlPatterns = "/report",
-    initParams = {
-        @WebInitParam(name = "author", value = "user")
+    initParams  = {
+        @WebInitParam(name = "author", value = "John"),
+        @WebInitParam(name = "version", value = "2")
     }
 )
-public class MoodServlet extends HttpServlet {
+public class ReportServlet extends HttpServlet {
 
     private String author;
 
     @Override
     public void init() {
-        author = getServletConfig().getInitParameter("author");
-    }
-
-    @Override
-    protected void doGet(HttpServletRequest request,
-                         HttpServletResponse response)
-                         throws IOException {
-
-        response.getWriter().println("Author: " + author);
+        author = getServletConfig().getInitParameter("author"); // "John"
     }
 }
+```
 
-When you visit /report, it prints:
+### `UnavailableException`
 
-Author: user
-8️⃣ What Is UnavailableException?
-
-If something goes wrong during initialization:
-
+Throw from `init()` when startup fails:
+```java
 @Override
 public void init() throws ServletException {
-    if (someProblem) {
+    if (databaseNotAvailable()) {
         throw new UnavailableException("Database not available");
     }
 }
+```
 
-Tomcat will:
+The container will not route any requests to this servlet.
 
-Not allow servlet to handle requests
+---
 
-Log error
+## 9. Listeners
 
-This is used when startup fails.
+### What They Are
 
-9️⃣ What Is the Difference Between Init Parameter and Context Parameter?
+Listeners implement the **Observer pattern** — they react automatically when container-level events happen, without you needing to add logic to every servlet.
 
-Very important.
+### The 3 Scopes and Their Events
+```
+Application Scope (ServletContext)  — one per app
+    ├── contextInitialized / contextDestroyed
+    └── attributeAdded / attributeRemoved / attributeReplaced
 
-🔹 Servlet Init Parameter
+Session Scope (HttpSession)         — one per user
+    ├── sessionCreated / sessionDestroyed
+    └── attributeAdded / attributeRemoved / attributeReplaced
 
-✔ Belongs to ONE specific servlet
-✔ Accessed using:
+Request Scope (ServletRequest)      — one per HTTP request
+    ├── requestInitialized / requestDestroyed
+    └── attributeAdded / attributeRemoved / attributeReplaced
+```
 
-getServletConfig().getInitParameter("name");
+### `ServletContextListener` — Application Startup/Shutdown
 
-Used for:
+The most commonly used listener. Perfect for initializing shared resources:
+```java
+@WebListener
+public class AppStartupListener implements ServletContextListener {
 
-Servlet-specific configuration
+    @Override
+    public void contextInitialized(ServletContextEvent sce) {
+        // App is starting — initialize shared resources
+        ConnectionPool pool = new ConnectionPool();
+        sce.getServletContext().setAttribute("dbPool", pool);
+        System.out.println("Application started, pool ready.");
+    }
 
-🔹 Context Parameter
+    @Override
+    public void contextDestroyed(ServletContextEvent sce) {
+        // App is shutting down — clean up
+        ConnectionPool pool =
+            (ConnectionPool) sce.getServletContext().getAttribute("dbPool");
+        pool.shutdown();
+    }
+}
+```
 
-✔ Belongs to the entire application
-✔ Shared by all servlets
-✔ Accessed using:
+### `HttpSessionListener` — Track Active Users
+```java
+@WebListener
+public class SessionTracker implements HttpSessionListener {
 
-getServletContext().getInitParameter("name");
+    private static final AtomicInteger activeUsers = new AtomicInteger(0);
 
-Defined in web.xml (usually).
+    @Override
+    public void sessionCreated(HttpSessionEvent se) {
+        System.out.println("Session created: " + se.getSession().getId());
+        activeUsers.incrementAndGet();
+    }
 
-Used for:
+    @Override
+    public void sessionDestroyed(HttpSessionEvent se) {
+        System.out.println("Session destroyed");
+        activeUsers.decrementAndGet();
+    }
 
-Global configuration (DB URL, version, etc.)
+    public static int getActiveUsers() {
+        return activeUsers.get();
+    }
+}
+```
 
+### `ServletContextAttributeListener` — React to Context Changes
+```java
+@WebListener
+public class ContextAttributeLogger implements ServletContextAttributeListener {
 
+    public void attributeAdded(ServletContextAttributeEvent event) {
+        System.out.println("Added to context: " + event.getName());
+    }
 
+    public void attributeRemoved(ServletContextAttributeEvent event) {
+        System.out.println("Removed from context: " + event.getName());
+    }
 
+    public void attributeReplaced(ServletContextAttributeEvent event) {
+        System.out.println("Replaced in context: " + event.getName());
+    }
+}
+```
 
+### `ServletRequestListener` — Per-Request Lifecycle
+```java
+@WebListener
+public class RequestTimer implements ServletRequestListener {
 
+    public void requestInitialized(ServletRequestEvent sre) {
+        sre.getServletRequest().setAttribute("startTime",
+            System.currentTimeMillis());
+    }
 
+    public void requestDestroyed(ServletRequestEvent sre) {
+        long start = (Long) sre.getServletRequest().getAttribute("startTime");
+        long duration = System.currentTimeMillis() - start;
+        System.out.println("Request took " + duration + "ms");
+    }
+}
+```
 
+### `HttpSessionBindingListener` — Object Notified When Bound to Session
 
+Your model object can listen to its own session binding:
+```java
+public class User implements HttpSessionBindingListener {
 
+    public void valueBound(HttpSessionBindingEvent event) {
+        System.out.println("User " + this.name + " logged in.");
+    }
 
+    public void valueUnbound(HttpSessionBindingEvent event) {
+        System.out.println("User " + this.name + " logged out.");
+    }
+}
+```
 
-🔎 What Is a Servlet Filter?
+---
 
-A Servlet Filter is a special Java class that sits between the client (browser) and your servlet.
+## 10. Filters
 
-It can:
+### What They Are
 
-Inspect a request before it reaches a servlet
-
-Modify the request
-
-Block the request
-
-Let it continue
-
-Modify the response before it goes back to the client
-
-It does not usually generate responses itself like a servlet does.
-
-Think of it as a gatekeeper or interceptor.
-
-🧠 What Problem Do Filters Solve?
-
-Imagine you have 20 servlets in your app.
-
-You want to:
-
-Log every request
-
-Check if user is logged in
-
-Compress responses
-
-Add security headers
-
-Measure execution time
-
-Without filters ❌
-You would need to duplicate that logic in every servlet.
-
-With filters ✅
-You write the logic once, and it applies to many servlets.
-
-🏗 Where Filters Fit in the Architecture
-
-In a servlet container like:
-
-Apache Tomcat
-
-Eclipse Jetty
-
-The request flow looks like this:
-
+A filter sits **between the client and your servlet**. It can inspect, modify, or block requests and responses.
+```
 Browser
    ↓
-Filter 1
+Filter 1 (e.g. logging)
    ↓
-Filter 2
+Filter 2 (e.g. authentication)
    ↓
 Servlet
    ↓
@@ -1430,342 +655,176 @@ Filter 2 (response phase)
 Filter 1 (response phase)
    ↓
 Browser
+```
 
-Filters wrap around servlets.
+### Why Filters Exist
 
-🔹 What Is a Filter Technically?
-
-A filter is a class that implements:
-
-javax.servlet.Filter
-
-It must implement:
-
-init()
-doFilter()
-destroy()
-
-The most important method is:
-
-doFilter()
-🔥 Basic Example: Logging Filter
-Step 1 — Create a Filter
-import javax.servlet.*;
-import javax.servlet.annotation.WebFilter;
-import java.io.IOException;
-
-@WebFilter("/*")   // Apply to all URLs
-public class LoggingFilter implements Filter {
-
-    @Override
-    public void init(FilterConfig filterConfig) {
-        System.out.println("LoggingFilter initialized");
-    }
-
-    @Override
-    public void doFilter(ServletRequest request,
-                         ServletResponse response,
-                         FilterChain chain)
-            throws IOException, ServletException {
-
-        System.out.println("Request received");
-
-        // Pass request to next filter or servlet
-        chain.doFilter(request, response);
-
-        System.out.println("Response sent");
-    }
-
-    @Override
-    public void destroy() {
-        System.out.println("LoggingFilter destroyed");
-    }
+Without filters, you duplicate cross-cutting logic in every servlet:
+```java
+// ❌ Without filters — duplicated in 20 servlets
+public void doGet(...) {
+    if (!isLoggedIn(request)) { response.sendRedirect("/login"); return; }
+    log(request);
+    // actual business logic
 }
-🔎 What Is chain.doFilter()?
+```
+```java
+// ✅ With filters — written once, applied everywhere
+@WebFilter("/*")
+public class AuthFilter implements Filter { ... }
+```
 
-This is VERY important.
+### The Filter Interface
+```java
+public interface Filter {
+    void init(FilterConfig filterConfig) throws ServletException;
+    void doFilter(ServletRequest request, ServletResponse response,
+                  FilterChain chain) throws IOException, ServletException;
+    void destroy();
+}
+```
 
-If you call:
-
+### `chain.doFilter()` — The Key Method
+```java
+// ✅ Let the request continue to the next filter or servlet
 chain.doFilter(request, response);
 
-The request continues to:
+// 🚫 Block the request (don't call chain.doFilter)
+response.sendError(HttpServletResponse.SC_FORBIDDEN);
+return;
+```
 
-The next filter
+### Example 1: Logging Filter
+```java
+@WebFilter("/*")
+public class LoggingFilter implements Filter {
 
-Or the target servlet
-
-If you DO NOT call it:
-
-The request is blocked.
-
-🚫 Example: Authentication Filter (Blocking Requests)
-@WebFilter("/admin/*")
-public class AuthFilter implements Filter {
-
-    public void doFilter(ServletRequest request,
-                         ServletResponse response,
+    public void doFilter(ServletRequest request, ServletResponse response,
                          FilterChain chain)
             throws IOException, ServletException {
 
         HttpServletRequest req = (HttpServletRequest) request;
-        HttpServletResponse res = (HttpServletResponse) response;
+        System.out.println("→ " + req.getMethod() + " " + req.getRequestURI());
 
-        HttpSession session = req.getSession(false);
+        long start = System.currentTimeMillis();
+        chain.doFilter(request, response); // continue
+        long duration = System.currentTimeMillis() - start;
 
-        if (session == null || session.getAttribute("user") == null) {
-            res.sendRedirect("/login");
-            return;   // STOP request
-        }
-
-        chain.doFilter(request, response); // Continue if logged in
+        System.out.println("← Completed in " + duration + "ms");
     }
+
+    public void init(FilterConfig fc) {}
+    public void destroy() {}
 }
-What this solves:
+```
 
-Instead of checking login in every admin servlet,
-we do it in one place.
+### Example 2: Authentication Filter (Blocking)
+```java
+@WebFilter("/profile")
+public class AuthFilter implements Filter {
 
-🔄 Filter Lifecycle
-
-In containers like Apache Tomcat:
-
-Filter class is loaded
-
-init() runs once
-
-doFilter() runs per request
-
-destroy() runs when server shuts down
-
-🎯 URL Pattern Mapping
-
-You control where the filter applies using:
-
-@WebFilter("/*")        // All requests
-@WebFilter("/admin/*")  // Only admin URLs
-@WebFilter("/report")   // Specific servlet
-🔗 What Is a Filter Chain?
-
-Multiple filters can apply to the same servlet.
-
-Example:
-
-@WebFilter("/*")
-public class LoggingFilter { ... }
-
-@WebFilter("/*")
-public class SecurityHeaderFilter { ... }
-
-@WebFilter("/admin/*")
-public class AuthFilter { ... }
-
-If user requests:
-
-/admin/dashboard
-
-The chain might be:
-
-LoggingFilter
-    ↓
-SecurityHeaderFilter
-    ↓
-AuthFilter
-    ↓
-AdminServlet
-
-Order depends on mapping order in web.xml
-(or container behavior with annotations).
-
-🧩 Modifying Request or Response
-
-Filters can wrap requests or responses.
-
-Example: Add Header to Every Response
-@WebFilter("/*")
-public class SecurityHeaderFilter implements Filter {
-
-    public void doFilter(ServletRequest request,
-                         ServletResponse response,
+    public void doFilter(ServletRequest request, ServletResponse response,
                          FilterChain chain)
             throws IOException, ServletException {
 
+        HttpServletRequest req  = (HttpServletRequest) request;
         HttpServletResponse res = (HttpServletResponse) response;
 
-        chain.doFilter(request, response);
+        HttpSession session = req.getSession(false);
+        User user = (session != null) ? (User) session.getAttribute("user") : null;
 
-        res.setHeader("X-Content-Type-Options", "nosniff");
+        if (user == null) {
+            res.sendError(HttpServletResponse.SC_FORBIDDEN, "Login required");
+            return; // ← request blocked, servlet never called
+        }
+
+        chain.doFilter(request, response); // ← user is logged in, continue
     }
+
+    public void init(FilterConfig fc) {}
+    public void destroy() {}
 }
+```
 
-Now every response gets a security header.
+### Example 3: Adding Security Headers to Responses
+```java
+@WebFilter("/*")
+public class SecurityHeaderFilter implements Filter {
 
-📦 What Is a Request/Response Wrapper?
+    public void doFilter(ServletRequest request, ServletResponse response,
+                         FilterChain chain)
+            throws IOException, ServletException {
 
-If you want to:
+        chain.doFilter(request, response); // let servlet run first
 
-Modify request parameters
+        // then modify the response
+        HttpServletResponse res = (HttpServletResponse) response;
+        res.setHeader("X-Content-Type-Options", "nosniff");
+        res.setHeader("X-Frame-Options", "DENY");
+    }
 
-Change response body
+    public void init(FilterConfig fc) {}
+    public void destroy() {}
+}
+```
 
-Capture output
+### Request/Response Wrappers
 
-You wrap them:
+When you need to modify request or response data, wrap them:
+```java
+// Wrapper that uppercases a specific parameter
+public class UpperCaseRequestWrapper extends HttpServletRequestWrapper {
 
-HttpServletRequestWrapper
-
-HttpServletResponseWrapper
-
-Example:
-
-public class CustomRequest extends HttpServletRequestWrapper {
-    public CustomRequest(HttpServletRequest request) {
+    public UpperCaseRequestWrapper(HttpServletRequest request) {
         super(request);
     }
 
     @Override
     public String getParameter(String name) {
-        if (name.equals("username")) {
-            return super.getParameter(name).toUpperCase();
-        }
-        return super.getParameter(name);
+        String value = super.getParameter(name);
+        return (value != null) ? value.toUpperCase() : null;
     }
 }
 
-Then pass it:
+// In the filter:
+chain.doFilter(new UpperCaseRequestWrapper(req), response);
+```
 
-chain.doFilter(new CustomRequest(req), response);
+---
 
+## 11. Dispatcher Types
 
-🔁 What Is a Dispatcher Type in Servlet Filters?
+### The Problem
 
-A Dispatcher Type controls when a filter should run during request processing.
+Not all requests come directly from the browser. Some are internal:
+```
+Browser → /login (REQUEST)
+             ↓
+        LoginServlet → forward → /dashboard (FORWARD)
+```
 
-Not every request reaches a servlet the same way.
+Dispatcher types tell a filter **when** it should run.
 
-Sometimes:
+### The 5 Types
 
-The browser calls a servlet directly
+| Type | When It Triggers |
+|---|---|
+| `REQUEST` | Direct client request (default) |
+| `FORWARD` | `requestDispatcher.forward()` |
+| `INCLUDE` | `requestDispatcher.include()` |
+| `ERROR` | Error page dispatch (404, 500 handler) |
+| `ASYNC` | Async processing resumes |
 
-One servlet forwards to another
+### Default Behavior
 
-A JSP includes another resource
+If you don't specify, filters only run on `REQUEST`:
+```java
+@WebFilter("/*") // implicitly: dispatcherTypes = {DispatcherType.REQUEST}
+public class MyFilter implements Filter { ... }
+```
 
-An error page is triggered
-
-An async process resumes
-
-Dispatcher types let you say:
-
-“Run this filter only in specific situations.”
-
-🧠 Why Dispatcher Types Exist
-
-Imagine you have an authentication filter.
-
-You probably want it to run when:
-
-A user directly accesses /admin
-
-But maybe NOT when:
-
-The request is internally forwarded
-
-An error page is being displayed
-
-Without dispatcher types, your filter would run in all cases — sometimes unnecessarily.
-
-📌 The 5 Dispatcher Types
-
-These are defined in javax.servlet.DispatcherType.
-
-1️⃣ REQUEST (Most Common)
-Meaning:
-
-The request came directly from the client (browser).
-
-Example:
-
-User types:
-http://localhost:8080/app/login
-
-The filter with REQUEST will run.
-
-Typical Use:
-
-✔ Authentication
-✔ Logging
-✔ Security checks
-
-2️⃣ FORWARD
-Meaning:
-
-A servlet forwarded the request to another resource using:
-
-request.getRequestDispatcher("/dashboard").forward(request, response);
-
-Now /dashboard is being processed.
-
-If a filter has FORWARD, it runs during that internal forward.
-
-Example Flow:
-Browser → LoginServlet
-LoginServlet → forward() → DashboardServlet
-
-If filter supports:
-
-REQUEST → runs for LoginServlet
-
-FORWARD → runs for DashboardServlet
-
-3️⃣ INCLUDE
-Meaning:
-
-A resource was included inside another resource using:
-
-request.getRequestDispatcher("/header.jsp").include(request, response);
-
-Common in JSP pages.
-
-Example:
-
-main.jsp includes header.jsp
-
-If filter supports INCLUDE → it runs for header.jsp.
-
-4️⃣ ERROR
-Meaning:
-
-The request is being processed by the error handling mechanism.
-
-Example:
-
-<error-page>
-    <error-code>404</error-code>
-    <location>/error.jsp</location>
-</error-page>
-
-If a 404 happens:
-
-Original request → error.jsp
-
-If filter supports ERROR → it runs for error.jsp.
-
-5️⃣ ASYNC
-Meaning:
-
-The request is resumed in asynchronous processing.
-
-Example:
-
-AsyncContext async = request.startAsync();
-
-Later, when async resumes, filters with ASYNC dispatcher will run.
-
-Used in advanced non-blocking servlet applications.
-
-🎯 How To Specify Dispatcher Type
-Using Annotation
+### Specifying Dispatcher Types
+```java
 @WebFilter(
     urlPatterns = "/*",
     dispatcherTypes = {
@@ -1773,723 +832,505 @@ Using Annotation
         DispatcherType.FORWARD
     }
 )
+public class MyFilter implements Filter { ... }
+```
 
-This filter runs:
+### Practical Example
+```
+Browser → LoginServlet → forward() → DashboardServlet
 
-On direct client request
+Filter with REQUEST only:
+  ✔ Runs for LoginServlet
+  ✗ Does NOT run for DashboardServlet
 
-On forward
+Filter with REQUEST + FORWARD:
+  ✔ Runs for LoginServlet
+  ✔ Runs for DashboardServlet
+```
 
-But NOT on include or error.
+**Real-world rule of thumb:**
+- Authentication filters → `REQUEST` only (don't re-authenticate internal forwards)
+- Logging filters → `REQUEST` + `FORWARD` + `ERROR` (log everything)
+- Error page filters → `ERROR`
 
->
-🔎 Visual Example
+---
 
-Suppose we have:
+## 12. RequestDispatcher
 
-@WebFilter(urlPatterns = "/*",
-           dispatcherTypes = {DispatcherType.REQUEST})
-Scenario:
-Browser → ServletA → forward → ServletB
+### What It Is
 
-Filter runs:
+`RequestDispatcher` lets one servlet invoke another resource **server-side**, invisibly to the browser.
 
-✔ For ServletA (REQUEST)
+### Getting a Dispatcher
+```java
+// Relative path (from request)
+RequestDispatcher rd = request.getRequestDispatcher("/dashboard.jsp");
 
-❌ Not for ServletB (because it is FORWARD)
+// Absolute path (from context)
+RequestDispatcher rd = getServletContext().getRequestDispatcher("/dashboard.jsp");
+```
 
-If we change to:
+### `include()` — Insert Content
 
-dispatcherTypes = {
-    DispatcherType.REQUEST,
-    DispatcherType.FORWARD
-}
-
-Now filter runs:
-
-✔ ServletA
-
-✔ ServletB
-
-🧠 Real-World Example: Authentication
-
-Imagine:
-
-/login
-
-/dashboard
-
-/error.jsp
-
-You want:
-
-Authentication for direct access
-
-But NOT re-authentication during forward
-
-And NOT on error pages
-
-You use:
-
-dispatcherTypes = {DispatcherType.REQUEST}
-⚠️ What Happens If You Don’t Specify?
-
-Default behavior:
-
-DispatcherType.REQUEST only
-
-So if you don't specify anything, the filter runs only for direct client requests.
-
-
-
-
-
-
-
-
-
-🔁 Invoking Other Web Resources (Servlet → Servlet / JSP / HTML)
-
-In a Java web application running inside a servlet container like:
-
-Apache Tomcat
-
-Eclipse Jetty
-
-A web component (Servlet/JSP) can call another web resource in two ways:
-
-1️⃣ Indirectly
-
-Send a URL to the browser and let the browser make a new request.
-
-Example:
-
-<a href="/app/profile">Go to Profile</a>
-
-Browser makes a new HTTP request.
-
-2️⃣ Directly (Server-Side Invocation)
-
-This happens inside the server, without the browser knowing.
-
-Two ways:
-
-include() → include content inside current response
-
-forward() → transfer control completely
-
-These use a RequestDispatcher.
-
-🧠 Why Do We Need This?
-
-Because real applications are modular.
-
-Example problems:
-
-You want a header and footer on every page.
-
-You want a controller servlet to decide which view (JSP) to show.
-
-You want authentication logic in one servlet and rendering in another.
-
-You want to reuse components.
-
-Without forwarding/include:
-You would duplicate code everywhere.
-
-🎯 What Is RequestDispatcher?
-
-RequestDispatcher is an object that allows one web component to:
-
-Include another resource
-
-Forward a request to another resource
-
-You obtain it using:
-
-request.getRequestDispatcher("path");
-
-or
-
-getServletContext().getRequestDispatcher("path");
-⚙️ How to Get a RequestDispatcher
-From request (can use relative path)
-RequestDispatcher rd =
-    request.getRequestDispatcher("dashboard.jsp");
-
-Relative path allowed.
-
-From ServletContext (must use absolute path)
-RequestDispatcher rd =
-    getServletContext().getRequestDispatcher("/dashboard.jsp");
-
-Must start with /.
-
-If resource does not exist:
-
-rd == null
-
-You must handle that safely.
-
-🔹 PART 1: Including Another Resource
-What Does include() Do?
-
-It:
-
-Calls another resource
-
-Inserts its output into the current response
-
-Returns control back to the caller
-
-The original servlet continues executing.
-
-🧩 Example: Header + Footer Reuse
-HeaderServlet
-@WebServlet("/header")
-public class HeaderServlet extends HttpServlet {
-    protected void doGet(HttpServletRequest request,
-                         HttpServletResponse response)
-            throws IOException {
-
-        response.getWriter().println("<h1>My Website</h1>");
-    }
-}
-MainServlet
+Runs another resource and inserts its output into the current response. Control returns to the caller.
+```java
 @WebServlet("/home")
 public class HomeServlet extends HttpServlet {
 
-    protected void doGet(HttpServletRequest request,
-                         HttpServletResponse response)
+    protected void doGet(HttpServletRequest req, HttpServletResponse res)
             throws IOException, ServletException {
 
-        response.getWriter().println("<html><body>");
+        res.getWriter().println("<html><body>");
 
-        RequestDispatcher rd =
-            request.getRequestDispatcher("/header");
+        // Include header from another servlet or JSP
+        req.getRequestDispatcher("/header.jsp").include(req, res);
 
-        rd.include(request, response);
-
-        response.getWriter().println("<p>Welcome!</p>");
-        response.getWriter().println("</body></html>");
+        res.getWriter().println("<p>Main content here</p>");
+        res.getWriter().println("</body></html>");
     }
 }
-🧠 What Happens Internally?
-Browser → /home
+```
 
-HomeServlet:
-    prints <html>
-    include(header)
-        HeaderServlet runs
-        header output inserted
-    continues printing
+### `forward()` — Transfer Control
 
-Final output:
-
-<html>
-<h1>My Website</h1>
-<p>Welcome!</p>
-</html>
-
-🔹 PART 2: Forwarding to Another Resource
-What Does forward() Do?
-
-It:
-
-Stops current servlet execution
-
-Transfers control completely
-
-The forwarded resource generates the response
-
-Browser URL does NOT change
-
-🧠 Common Use Case: MVC Pattern
-
-Controller → View
-
-LoginServlet (Controller)
+Hands off to another resource completely. The current servlet stops. The browser URL does **not** change.
+```java
 @WebServlet("/login")
 public class LoginServlet extends HttpServlet {
 
-    protected void doPost(HttpServletRequest request,
-                          HttpServletResponse response)
+    protected void doPost(HttpServletRequest req, HttpServletResponse res)
             throws IOException, ServletException {
 
-        String user = request.getParameter("username");
+        String user = req.getParameter("username");
 
-        if (user.equals("admin")) {
-            request.setAttribute("message", "Welcome Admin!");
-
-            RequestDispatcher rd =
-                request.getRequestDispatcher("/dashboard.jsp");
-
-            rd.forward(request, response);
+        if (authenticates(user)) {
+            req.setAttribute("message", "Welcome, " + user + "!");
+            req.getRequestDispatcher("/WEB-INF/jsp/dashboard.jsp")
+               .forward(req, res); // ← transfers control to JSP
         } else {
-            response.sendRedirect("error.html");
+            res.sendRedirect("/login?error=1"); // ← tells browser to go elsewhere
         }
     }
 }
-dashboard.jsp
+```
+```jsp
+<%-- dashboard.jsp --%>
 <h2>${message}</h2>
-🧠 What Happens Internally?
-Browser → POST /login
-LoginServlet processes
-forward → dashboard.jsp
-dashboard.jsp generates response
-Browser sees result
+```
 
-BUT URL still shows:
+### MVC Pattern
 
-/login
+This is the standard **Model-View-Controller** pattern in servlet applications:
+```
+Browser
+  ↓ POST /login
+Controller (LoginServlet)       ← processes logic
+  ↓ forward()
+View (dashboard.jsp)            ← renders HTML
+  ↓
+Browser
+```
 
-Because forward is server-side.
+### Critical Rule
 
-🔥 Important Rule About forward()
+You cannot write to the response body **before** calling `forward()`:
+```java
+// ❌ IllegalStateException — response already started
+res.getWriter().println("Hello");
+rd.forward(req, res);
 
-You cannot write to response before forwarding.
+// ✅ Set attributes, then forward
+req.setAttribute("data", value);
+rd.forward(req, res);
+```
 
-This will throw:
+---
 
-IllegalStateException
+## 13. Session Management
 
-Bad:
+### The Problem: HTTP Is Stateless
 
-response.getWriter().println("Hello");
-rd.forward(request, response);  // ❌ ERROR
+Every HTTP request is independent. The server has no built-in memory of previous requests:
+```
+Request 1: POST /cart/add    → adds item
+Request 2: GET  /cart        → which user's cart? Server doesn't know!
+```
 
-Why?
+### `HttpSession` — The Solution
 
-Because response was already committed.
+The container creates a unique session object per user and links it to subsequent requests via a cookie:
+```
+Server creates session → sends JSESSIONID=abc123 cookie
+Browser sends that cookie with every request
+Server finds session by cookie → restores user state
+```
 
-
-
-
-
-
-
-
-🧠 Maintaining Client State (Sessions in Servlets)
-🚨 The Core Problem: HTTP Is Stateless
-
-HTTP does not remember anything between requests.
-
-Example:
-
-Request 1 → Add item to cart
-Request 2 → Checkout
-
-The server does not automatically know these two requests came from the same user.
-
-That’s a problem for:
-
-Shopping carts
-
-Login systems
-
-Multi-step forms
-
-User preferences
-
-Dashboards
-
-So we need Session Management.
-
-🎯 What Is a Session?
-
-A Session is a server-side object that stores data for one specific user across multiple requests.
-
-In Java Servlets, sessions are represented by:
-
-javax.servlet.http.HttpSession
-🔹 How It Works Internally
-
-In a container like:
-
-Apache Tomcat
-
-When a user visits your site:
-
-Server creates a unique session ID.
-
-Server stores session data in memory.
-
-Server sends session ID to browser (usually as cookie: JSESSIONID).
-
-Browser sends that ID back with every request.
-
-Server finds correct session using that ID.
-
-🔑 Accessing a Session
-
-You get session from request:
-
+### Creating and Accessing Sessions
+```java
+// Get existing session or create new one
 HttpSession session = request.getSession();
-What this does:
 
-If session exists → returns it.
-
-If not → creates new session.
-
-If you DON’T want to create one:
+// Get existing session only (returns null if none exists)
 HttpSession session = request.getSession(false);
+```
 
-Returns null if no session exists.
+### Storing and Reading Data
+```java
+// Store
+session.setAttribute("user", userObject);
+session.setAttribute("cart", cartList);
 
-🛒 Example: Shopping Cart
-Step 1 — Add Item
-@WebServlet("/add")
-public class AddToCartServlet extends HttpServlet {
+// Read
+User user = (User) session.getAttribute("user");
 
-    protected void doGet(HttpServletRequest request,
-                         HttpServletResponse response)
+// Remove
+session.removeAttribute("cart");
+```
+
+### Session Timeout
+
+Sessions expire after inactivity. Default is typically 30 minutes.
+```java
+// Read timeout (in seconds)
+int seconds = session.getMaxInactiveInterval();
+
+// Set timeout
+session.setMaxInactiveInterval(600); // 10 minutes
+
+// Configure globally in web.xml (in minutes)
+// <session-config>
+//     <session-timeout>30</session-timeout>
+// </session-config>
+```
+
+### Login / Logout Pattern
+```java
+// LOGIN — after validating credentials
+HttpSession session = request.getSession();
+session.setAttribute("user", authenticatedUser);
+response.sendRedirect("/profile");
+
+// LOGOUT
+@WebServlet("/logout")
+public class LogoutServlet extends HttpServlet {
+    protected void doGet(HttpServletRequest req, HttpServletResponse res)
             throws IOException {
 
-        HttpSession session = request.getSession();
+        HttpSession session = req.getSession(false);
+        if (session != null) {
+            session.invalidate(); // destroys session and all its data
+        }
+        res.sendRedirect("/login");
+    }
+}
+```
 
+### Shopping Cart Example
+```java
+// Add to cart
+@WebServlet("/cart/add")
+public class AddToCartServlet extends HttpServlet {
+    protected void doPost(HttpServletRequest req, HttpServletResponse res)
+            throws IOException {
+
+        HttpSession session = req.getSession();
+
+        @SuppressWarnings("unchecked")
         List<String> cart =
             (List<String>) session.getAttribute("cart");
 
         if (cart == null) {
             cart = new ArrayList<>();
+            session.setAttribute("cart", cart);
         }
 
-        String item = request.getParameter("item");
-        cart.add(item);
-
-        session.setAttribute("cart", cart);
-
-        response.getWriter().println("Item added!");
+        cart.add(req.getParameter("item"));
+        res.sendRedirect("/cart");
     }
 }
-Step 2 — View Cart
+
+// View cart
 @WebServlet("/cart")
 public class ViewCartServlet extends HttpServlet {
-
-    protected void doGet(HttpServletRequest request,
-                         HttpServletResponse response)
+    protected void doGet(HttpServletRequest req, HttpServletResponse res)
             throws IOException {
 
-        HttpSession session = request.getSession(false);
-
+        HttpSession session = req.getSession(false);
         if (session == null) {
-            response.getWriter().println("No cart found");
+            res.sendRedirect("/login");
             return;
         }
 
-        List<String> cart =
-            (List<String>) session.getAttribute("cart");
-
-        response.getWriter().println("Your Cart:");
-        for (String item : cart) {
-            response.getWriter().println(item);
-        }
+        List<String> cart = (List<String>) session.getAttribute("cart");
+        // render cart...
     }
 }
-🧩 Associating Objects With Session
+```
 
-You store objects like this:
+---
 
-session.setAttribute("username", "john");
+## 14. Graceful Shutdown
 
-Retrieve:
+### The Problem
 
-String user = (String) session.getAttribute("username");
+When the server shuts down, `destroy()` is called — but long-running requests may still be active in other threads:
+```
+Thread 1 (processing 5-minute upload) ──────────────────────►
+Thread 2 (normal request)             ────►
+destroy() called ───────────────────────────────────────────►
+                                       ↑ problem: Thread 1 still running!
+```
 
-Remove:
+If you immediately close resources in `destroy()`, Thread 1 will crash.
 
-session.removeAttribute("username");
-🧠 Important Concept
+### The Solution: Track Active Requests
+```java
+public class SafeServlet extends HttpServlet {
 
-Session data:
+    private int activeRequests = 0;
+    private boolean shuttingDown = false;
 
-✔ Available to all servlets
-✔ Within the same web application
-✔ For the same user session
+    // Synchronized counter methods
+    private synchronized void incrementCounter() { activeRequests++; }
+    private synchronized void decrementCounter() { activeRequests--; }
+    private synchronized int  getCount()         { return activeRequests; }
+    private synchronized void setShuttingDown()  { shuttingDown = true; }
+    private synchronized boolean isShuttingDown(){ return shuttingDown; }
 
-🔥 Session Timeout
+    @Override
+    protected void service(HttpServletRequest req, HttpServletResponse res)
+            throws ServletException, IOException {
 
-Because browser never tells server:
-
-“I’m done.”
-
-Sessions expire automatically after inactivity.
-
-Default: usually 30 minutes.
-
-Get Timeout
-int seconds = session.getMaxInactiveInterval();
-Set Timeout (in seconds)
-session.setMaxInactiveInterval(600); // 10 minutes
-
-❌ Invalidating Session (Logout)
-@WebServlet("/logout")
-public class LogoutServlet extends HttpServlet {
-
-    protected void doGet(HttpServletRequest request,
-                         HttpServletResponse response)
-            throws IOException {
-
-        HttpSession session = request.getSession(false);
-
-        if (session != null) {
-            session.invalidate();
-        }
-
-        response.getWriter().println("Logged out");
-    }
-}
-
-What this does:
-
-✔ Deletes session
-✔ Removes all session data
-✔ Makes session ID invalid
-
-🔔 Session Events (Advanced)
-
-Your objects can listen to session events.
-
-1️⃣ HttpSessionBindingListener
-
-Notified when object is:
-
-Added to session
-
-Removed from session
-
-Example:
-
-public class User implements HttpSessionBindingListener {
-
-    public void valueBound(HttpSessionBindingEvent event) {
-        System.out.println("User added to session");
-    }
-
-    public void valueUnbound(HttpSessionBindingEvent event) {
-        System.out.println("User removed from session");
-    }
-}
-
-
-
-
-🧠 What Is “Finalizing a Servlet”?
-
-Finalizing means:
-
-The servlet container is about to remove the servlet from service.
-
-This happens when:
-
-The server shuts down
-
-The application is redeployed
-
-The container wants to free memory
-
-The servlet is unloaded
-
-Before removal, the container calls:
-
-public void destroy()
-🎯 Why destroy() Exists
-
-Your servlet may hold resources like:
-
-Database connections
-
-File handles
-
-Network sockets
-
-Threads
-
-Caches
-
-If you don’t clean them up:
-
-Memory leaks occur
-
-Connections remain open
-
-Threads continue running
-
-Server may crash
-
-So destroy() is your cleanup method.
-
-⚠️ Important Detail
-
-The container tries to call destroy() only after:
-
-All active requests finish
-OR
-
-A grace period expires
-
-But if a request takes too long…
-
-👉 It might still be running when destroy() executes.
-
-That’s the real problem this section solves.
-
-🚨 The Real Problem
-
-Imagine this situation:
-
-protected void doPost(...) {
-    Thread.sleep(5 minutes);
-}
-
-Now:
-
-User sends request
-
-Servlet starts long task
-
-Admin shuts down server
-
-Container calls destroy()
-
-But that thread is still running!
-
-If you immediately close resources:
-
-Thread may crash
-
-Data may corrupt
-
-Exceptions may happen
-
-So we need:
-
-✔ Track running requests
-✔ Notify them to stop
-✔ Wait for them to finish
-✔ Then clean up safely
-
-🧮 Step 1 — Tracking Active Service Methods
-
-Because servlets are multi-threaded:
-
-Each request runs in a different thread.
-
-So we count how many are active.
-
-Add Counter Field
-public class ShutdownExample extends HttpServlet {
-
-    private int serviceCounter = 0;
-
-    protected synchronized void enteringServiceMethod() {
-        serviceCounter++;
-    }
-
-    protected synchronized void leavingServiceMethod() {
-        serviceCounter--;
-    }
-
-    protected synchronized int numServices() {
-        return serviceCounter;
-    }
-}
-Why synchronized?
-
-Multiple threads will modify serviceCounter.
-
-Without synchronization:
-
-Race conditions occur
-
-Counter becomes incorrect
-
-🔁 Step 2 — Override service() Properly
-
-Normally you override:
-
-doGet()
-doPost()
-
-But here we override service() itself.
-
-Why?
-
-Because service() is called for EVERY request.
-
-Correct Implementation
-protected void service(HttpServletRequest req,
-                       HttpServletResponse resp)
-        throws ServletException, IOException {
-
-    enteringServiceMethod();
-
-    try {
-        super.service(req, resp);
-    } finally {
-        leavingServiceMethod();
-    }
-}
-Why use try-finally?
-
-Even if:
-
-Exception occurs
-
-Client disconnects
-
-We must decrement counter.
-
-🔔 Step 3 — Shutdown Notification Flag
-
-We need a way to tell running threads:
-
-“Stop working. Server is shutting down.”
-
-Add a flag:
-
-private boolean shuttingDown;
-
-protected synchronized void setShuttingDown(boolean flag) {
-    shuttingDown = flag;
-}
-
-protected synchronized boolean isShuttingDown() {
-    return shuttingDown;
-}
-🛑 Step 4 — Implement destroy() Cleanly
-public void destroy() {
-
-    // If requests still running
-    if (numServices() > 0) {
-        setShuttingDown(true);
-    }
-
-    // Wait for them to finish
-    while (numServices() > 0) {
+        incrementCounter();
         try {
-            Thread.sleep(1000); // wait 1 second
-        } catch (InterruptedException e) {
+            // Check if we should still accept work
+            if (isShuttingDown()) {
+                res.sendError(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
+                return;
+            }
+            super.service(req, res); // routes to doGet/doPost
+        } finally {
+            decrementCounter(); // always decrement, even on exception
         }
     }
 
-    // Now safe to release resources
-    closeDatabaseConnection();
+    @Override
+    public void destroy() {
+        if (getCount() > 0) {
+            setShuttingDown(true);
+        }
+
+        // Wait for all active requests to finish
+        while (getCount() > 0) {
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+
+        // Now safe to release resources
+        closeDatabase();
+    }
 }
-🧠 What Happens Now?
+```
 
-When shutdown starts:
+### Why `synchronized`?
 
-destroy() is called
+`activeRequests` is accessed from multiple threads simultaneously. Without `synchronized`, two threads could read-modify-write at the same time, corrupting the count.
 
-shuttingDown flag becomes true
+---
 
-destroy() waits
+## 15. File Upload
 
-Running threads detect shutdown
+### The Problem Before Servlet 3.0
 
-They stop politely
+When a browser uploads a file, it sends `multipart/form-data`:
+```
+------Boundary
+Content-Disposition: form-data; name="avatar"; filename="photo.png"
+Content-Type: image/png
 
-Counter reaches zero
+(binary image data)
+------Boundary--
+```
 
-destroy() exits safely
+Servlet's normal `request.getParameter()` cannot parse this format. Before Servlet 3.0, you needed external libraries like Apache Commons FileUpload.
+
+### Servlet 3.0 Solution: Built-in Multipart Support
+
+Add `@MultipartConfig` to your servlet and the container handles parsing automatically.
+
+### `@MultipartConfig` Attributes Explained
+```java
+@MultipartConfig(
+    location          = "/tmp",           // temp dir for files exceeding threshold
+    fileSizeThreshold = 1024 * 1024,      // 1MB: below → memory, above → disk
+    maxFileSize       = 1024 * 1024 * 5,  // 5MB max per file
+    maxRequestSize    = 1024 * 1024 * 25  // 25MB max total request size
+)
+```
+
+| Attribute | Effect |
+|---|---|
+| `location` | Where temp files go when they exceed threshold |
+| `fileSizeThreshold` | Below this → kept in memory; above → written to temp disk |
+| `maxFileSize` | Per-file limit. Exceeded → `IllegalStateException` |
+| `maxRequestSize` | Total request limit. Exceeded → `IllegalStateException` |
+
+### The `Part` Interface
+
+Each section of a multipart request is a `Part`:
+```java
+Part filePart = request.getPart("avatar");
+
+filePart.getName();                // form field name: "avatar"
+filePart.getSubmittedFileName();   // original name: "photo.png"
+filePart.getContentType();         // MIME type: "image/png"
+filePart.getSize();                // size in bytes
+
+filePart.write("/uploads/photo.png");  // save to disk
+filePart.getInputStream();             // read raw bytes
+filePart.delete();                     // delete temp file
+```
+
+### Example 1: Single File Upload
+
+**HTML:**
+```html
+<form action="/upload" method="post" enctype="multipart/form-data">
+    <input type="file" name="avatar" required>
+    <button type="submit">Upload</button>
+</form>
+```
+
+**Servlet:**
+```java
+@WebServlet("/upload")
+@MultipartConfig(
+    fileSizeThreshold = 1024 * 1024,
+    maxFileSize       = 1024 * 1024 * 5,
+    maxRequestSize    = 1024 * 1024 * 10
+)
+public class UploadServlet extends HttpServlet {
+
+    protected void doPost(HttpServletRequest req, HttpServletResponse res)
+            throws ServletException, IOException {
+
+        Part filePart = req.getPart("avatar");
+
+        if (filePart == null || filePart.getSize() == 0) {
+            res.sendError(HttpServletResponse.SC_BAD_REQUEST, "No file uploaded.");
+            return;
+        }
+
+        String originalName = filePart.getSubmittedFileName();
+        String extension    = originalName.substring(originalName.lastIndexOf("."));
+
+        // Generate unique filename to prevent collisions
+        String savedName = UUID.randomUUID().toString() + extension;
+
+        filePart.write("/var/uploads/" + savedName);
+
+        res.getWriter().println("Uploaded as: " + savedName);
+    }
+}
+```
+
+### Example 2: Validate It's a Real Image
+
+Use `ImageIO.read()` to verify the file is actually an image:
+```java
+InputStream stream  = filePart.getInputStream();
+BufferedImage image = ImageIO.read(stream);
+
+if (image == null) {
+    res.sendError(HttpServletResponse.SC_BAD_REQUEST,
+                  "Uploaded file is not a valid image.");
+    return;
+}
+// Safe to save
+```
+
+### Example 3: File + Text Fields Together
+```html
+<form action="/register" method="post" enctype="multipart/form-data">
+    <input type="text" name="username">
+    <input type="file" name="avatar">
+    <button>Register</button>
+</form>
+```
+```java
+// Text fields still work normally
+String username = request.getParameter("username");
+
+// File part accessed separately
+Part avatar = request.getPart("avatar");
+```
+
+### Example 4: Multiple Files
+```html
+<input type="file" name="photos" multiple>
+```
+```java
+Collection<Part> parts = request.getParts();
+
+for (Part part : parts) {
+    // Skip text fields — they have no submitted filename
+    if (part.getSubmittedFileName() == null ||
+        part.getSubmittedFileName().isEmpty()) {
+        continue;
+    }
+
+    String fileName = UUID.randomUUID() + "_" + part.getSubmittedFileName();
+    part.write("/var/uploads/" + fileName);
+}
+```
+
+### Memory vs Disk — What Actually Happens
+```
+File size < fileSizeThreshold  →  stored in JVM heap memory
+File size > fileSizeThreshold  →  written to location directory as temp file
+                                  → call part.write() to move to permanent location
+                                  → container deletes temp file after request ends
+```
+
+### Handling Size Limit Errors
+```java
+try {
+    Part filePart = request.getPart("avatar"); // may throw if limits exceeded
+    filePart.write("/uploads/" + fileName);
+} catch (IllegalStateException e) {
+    // maxFileSize or maxRequestSize exceeded
+    res.sendError(HttpServletResponse.SC_BAD_REQUEST, "File too large.");
+}
+```
+
+---
+
+## Quick Reference
+```
+Request comes in
+      ↓
+Container parses HTTP
+      ↓
+Filters run (in order)
+      ↓
+Servlet.service() called
+      ↓
+doGet() / doPost() runs
+      ↓
+Response sent
+      ↓
+Filters run (response phase, reverse order)
+      ↓
+Browser receives response
+```
+```
+Scope        Object          Lifetime
+─────────────────────────────────────────────
+Application  ServletContext  App start → stop
+Session      HttpSession     Login    → logout/timeout
+Request      HttpServletReq  Request  → response sent
+```
